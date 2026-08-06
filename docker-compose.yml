@@ -1,0 +1,43 @@
+version: "3.9"
+name: sanguis
+
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    ports: ["27017:27017"]
+    volumes: ["mongo_data:/data/db"]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports: ["6379:6379"]
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file: ./backend/.env
+    environment:
+      - MONGO_URI=mongodb://mongo:27017/hackathon
+      - REDIS_URL=redis://redis:6379
+    depends_on: [mongo, redis]
+    ports: ["5000:5000"]
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:5000/api/v1
+    depends_on: [backend]
+    ports: ["3000:3000"]
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports: ["80:80"]
+    depends_on: [backend, frontend]
+
+volumes:
+  mongo_data:
