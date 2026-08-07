@@ -1,7 +1,7 @@
 import { Schema, model, Document, Types } from "mongoose";
 import argon2 from "argon2";
 
-export type UserRole = "user" | "admin" | "moderator";
+export type UserRole = "user" | "admin" | "moderator" | "hospital" | "donor";
 
 export interface IUser extends Document {
   _id: Types.ObjectId;
@@ -29,7 +29,7 @@ const userSchema = new Schema<IUser>(
     name: { type: String, required: true, trim: true, maxlength: 100 },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true, index: true },
     password: { type: String, required: true, select: false }, // never returned by default
-    role: { type: String, enum: ["user", "admin", "moderator"], default: "user" },
+    role: { type: String, enum: ["user", "admin", "moderator", "hospital", "donor"], default: "user" },
     avatarUrl: { type: String },
     isEmailVerified: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },
