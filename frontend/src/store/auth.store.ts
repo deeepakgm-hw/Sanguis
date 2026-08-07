@@ -4,7 +4,7 @@ interface User {
   _id: string;
   name: string;
   email: string;
-  role: "user" | "admin" | "moderator";
+  role: "user" | "admin" | "moderator" | "hospital" | "donor";
   avatarUrl?: string;
 }
 
