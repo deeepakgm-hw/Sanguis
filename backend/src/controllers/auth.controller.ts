@@ -173,7 +173,7 @@ export const googleCallback = asyncHandler(async (req: Request, res: Response) =
       throw ApiError.badRequest("Google authentication failed");
     }
 
-    const { access_token } = await tokenResponse.json();
+    const { access_token } = (await tokenResponse.json()) as any;
 
     // 2. Retrieve user profile info from Google API
     const userResponse = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
@@ -184,7 +184,7 @@ export const googleCallback = asyncHandler(async (req: Request, res: Response) =
       throw ApiError.badRequest("Failed to fetch Google profile info");
     }
 
-    profile = await userResponse.json(); // { name, email, sub }
+    profile = (await userResponse.json()) as any; // { name, email, sub }
   }
 
   // 3. Find or register user
@@ -256,7 +256,7 @@ export const githubCallback = asyncHandler(async (req: Request, res: Response) =
       throw ApiError.badRequest("GitHub token exchange failed");
     }
 
-    const { access_token } = await tokenResponse.json();
+    const { access_token } = (await tokenResponse.json()) as any;
 
     // 2. Fetch User Profile
     const userResponse = await fetch("https://api.github.com/user", {
@@ -270,7 +270,7 @@ export const githubCallback = asyncHandler(async (req: Request, res: Response) =
       throw ApiError.badRequest("Failed to fetch GitHub profile info");
     }
 
-    const profile = await userResponse.json(); // { id, name, login, email }
+    const profile = (await userResponse.json()) as any; // { id, name, login, email }
     profileName = profile.name || profile.login || "GitHub User";
     email = profile.email;
 
@@ -283,7 +283,7 @@ export const githubCallback = asyncHandler(async (req: Request, res: Response) =
         },
       });
       if (emailsResponse.ok) {
-        const emailsList = await emailsResponse.json();
+        const emailsList = (await emailsResponse.json()) as any;
         const primaryEmail = emailsList.find((e: any) => e.primary && e.verified);
         email = primaryEmail ? primaryEmail.email : emailsList[0]?.email;
       }

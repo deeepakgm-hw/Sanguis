@@ -2,7 +2,7 @@ import { Router } from "express";
 import { requireAuth } from "../middlewares/auth";
 import { requireRole, requireOwnership } from "../middlewares/rbac";
 import { validate } from "../middlewares/validate";
-import { requireVerifiedRequester } from "../middlewares/verifiedRequester";
+import { requireVerifiedRequester } from "../middlewares/security/requireVerifiedRequester";
 import * as bloodRequestController from "../controllers/bloodRequest.controller";
 import { getPriorityQueue } from "../controllers/priorityQueue.controller";
 import { BloodRequest } from "../models/BloodRequest";
@@ -41,7 +41,6 @@ router.get(
 router.post(
   "/",
   requireAuth,
-  requireRole("admin", "moderator"), // Or normal authenticated users with specific roles, or hospital checks. The prompt says "Hospitals can only create/update their own BloodRequests". We will verify ownership / role in requireOwnership or via custom check. Let's make sure it requires a hospital role or similar check. Since User.ts roles are "user" | "admin" | "moderator", hospital is a "user" with verified hospital credentials (managed by requireVerifiedRequester). Let's use requireVerifiedRequester here.
   requireVerifiedRequester,
   validate(createBloodRequestSchema),
   bloodRequestController.createBloodRequest
