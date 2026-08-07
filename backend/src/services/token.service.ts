@@ -17,7 +17,7 @@ function hashToken(raw: string): string {
 export function signAccessToken(user: IUser): { token: string; tokenId: string } {
   const tokenId = randomUUID();
   const token = jwt.sign({ sub: user._id.toString(), role: user.role, tokenId }, env.JWT_ACCESS_SECRET, {
-    expiresIn: env.JWT_ACCESS_EXPIRES,
+    expiresIn: env.JWT_ACCESS_EXPIRES as any,
   });
   return { token, tokenId };
 }
@@ -75,7 +75,7 @@ export async function rotateRefreshToken(
   record.isUsed = true;
   await record.save();
 
-  const newToken = await issueRefreshToken(record.user.toString(), meta, family);
+  const newToken = await issueRefreshToken(record.user.toString(), meta, family as any);
   return { userId: record.user.toString(), newToken };
 }
 
