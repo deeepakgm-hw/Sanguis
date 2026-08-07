@@ -5,8 +5,7 @@ import { logger } from "../utils/logger";
 
 class MockRedis extends EventEmitter {
   private store = new Map<string, { value: string; expiresAt?: number }>();
-
-  private geoStore = new Map<string, Map<string, { lng: number; lat: number }>>();
+  private geoStore = new Map<string, Map<string, { lat: number; lng: number }>>();
   private hashStore = new Map<string, Map<string, string>>();
 
   constructor() {
@@ -81,7 +80,7 @@ class MockRedis extends EventEmitter {
     }
     const map = this.geoStore.get(key)!;
     const isNew = !map.has(member);
-    map.set(member, { lng: Number(lng), lat: Number(lat) });
+    map.set(member, { lat: Number(lat), lng: Number(lng) });
     return isNew ? 1 : 0;
   }
 
@@ -91,15 +90,27 @@ class MockRedis extends EventEmitter {
     return map.delete(member) ? 1 : 0;
   }
 
-  async georadius(key: string, lng: number, lat: number, radius: number, unit: string, ...args: any[]): Promise<string[]> {
+  async georadius(
+    key: string,
+    lng: number,
+    lat: number,
+    radius: number,
+    unit: string,
+    ...args: any[]
+  ): Promise<string[]> {
     return this.geosearch(key, lng, lat, radius, unit);
   }
 
-  async geosearch(key: string, lng: number, lat: number, radius: number, unit: string = "km"): Promise<string[]> {
+  async geosearch(
+    key: string,
+    lng: number,
+    lat: number,
+    radius: number,
+    unit: string = "km"
+  ): Promise<string[]> {
     const map = this.geoStore.get(key);
     if (!map) return [];
-    
-    // Convert radius to km if meters specified
+
     const radiusKm = unit.toLowerCase() === "m" ? radius / 1000 : radius;
 
     const results: string[] = [];
@@ -112,7 +123,9 @@ class MockRedis extends EventEmitter {
       const dLng = ((loc.lng - targetLng) * Math.PI) / 180;
       const a =
         Math.sin(dLat / 2) ** 2 +
-        Math.cos((targetLat * Math.PI) / 180) * Math.cos((loc.lat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+        Math.cos((targetLat * Math.PI) / 180) *
+          Math.cos((loc.lat * Math.PI) / 180) *
+          Math.sin(dLng / 2) ** 2;
       const distKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
       if (distKm <= radiusKm) {
@@ -121,6 +134,10 @@ class MockRedis extends EventEmitter {
     }
 
     return results;
+  }
+
+  async exists(key: string): Promise<number> {
+    return this.geoStore.has(key) || this.store.has(key) || this.hashStore.has(key) ? 1 : 0;
   }
 
   async hset(key: string, field: string | Record<string, any>, value?: any): Promise<number> {
