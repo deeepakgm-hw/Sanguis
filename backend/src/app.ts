@@ -17,6 +17,9 @@ import fileRoutes from "./routes/file.routes";
 import healthRoutes from "./routes/health.routes";
 import auditRoutes from "./routes/audit.routes";
 import notificationRoutes from "./routes/notification.routes";
+import donorRoutes from "./routes/donor.routes";
+import bloodRequestRoutes from "./routes/bloodRequest.routes";
+import matchRoutes from "./routes/match.routes";
 
 export function createApp(): Application {
   const app = express();
@@ -44,6 +47,9 @@ export function createApp(): Application {
   app.use("/api/v1/files", fileRoutes);
   app.use("/api/v1/audit", auditRoutes);
   app.use("/api/v1/notifications", notificationRoutes);
+  app.use("/api/v1/donors", donorRoutes);
+  app.use("/api/v1/blood-requests", bloodRequestRoutes);
+  app.use("/api/v1/matches", matchRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
