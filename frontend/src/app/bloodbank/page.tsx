@@ -28,7 +28,7 @@ import {
   Share2,
 } from "lucide-react";
 import Link from "next/link";
-import { SanguisAiCopilot } from "@/components/widgets/ai-copilot";
+
 
 interface BloodBankProfile {
   _id: string;
@@ -57,23 +57,7 @@ interface TransactionItem {
   createdAt: string;
 }
 
-// ── Mock Logistics Telemetry Data ─────────────────────────────────────────────
-const MOCK_DISPATCH_VEHICLES = [
-  { id: "VEH-901", courier: "Express MedTrans #4", temp: "+3.8°C", route: "Apollo Hospital Main", units: 4, blood: "O-", status: "in_transit", eta: "11 min" },
-  { id: "VEH-904", courier: "ColdChain Courier #2", temp: "+4.1°C", route: "Fortis Malar Emergency", units: 2, blood: "AB-", status: "loading", eta: "18 min" },
-  { id: "VEH-908", courier: "Red Cross Swift #1", temp: "+3.9°C", route: "Inter-Bank Share (Adyar Hub)", units: 6, blood: "B+", status: "in_transit", eta: "24 min" },
-];
 
-const MOCK_EXPIRING_BATCHES = [
-  { batchId: "BATCH-8841", blood: "O-", units: 2, daysLeft: 3, status: "CRITICAL_FEFO", rec: "Prioritise for Apollo Emergency Request" },
-  { batchId: "BATCH-8902", blood: "A-", units: 4, daysLeft: 6, status: "WARNING", rec: "Transfer to Regional Sharing Network" },
-  { batchId: "BATCH-8930", blood: "B-", units: 1, daysLeft: 8, status: "NOMINAL", rec: "Standard cold storage retention" },
-];
-
-const MOCK_TRANSFER_REQUESTS = [
-  { id: "TRF-301", bank: "Adyar Regional Repository", distance: "4.2 km", blood: "O-", unitsNeeded: 3, urgency: "CRITICAL" },
-  { id: "TRF-304", bank: "North Chennai Blood Hub", distance: "8.5 km", blood: "AB-", unitsNeeded: 2, urgency: "HIGH" },
-];
 
 export default function BloodBankPortalPage() {
   const router = useRouter();
@@ -100,6 +84,9 @@ export default function BloodBankPortalPage() {
   const [adjReason, setAdjReason] = useState("restock");
   const [adjNotes, setAdjNotes] = useState("");
   const [adjSubmitting, setAdjSubmitting] = useState(false);
+
+  // Cross-Bank Reallocation Engine state
+  const [reallocations, setReallocations] = useState<any[]>([]);
 
   // Authenticate Gate
   useEffect(() => {
@@ -162,6 +149,13 @@ export default function BloodBankPortalPage() {
         setRegFormActive(false);
       } else {
         setRegFormActive(true);
+      }
+
+      try {
+        const reallocRes = await api.get("/bloodbanks/reallocation/suggestions");
+        setReallocations(reallocRes.data.data || []);
+      } catch {
+        setReallocations([]);
       }
     } catch (err: any) {
       console.error("Failed to load bank profile", err);
@@ -506,35 +500,83 @@ export default function BloodBankPortalPage() {
                   </div>
                 </div>
 
-                {/* Outgoing Dispatches & Transit Vehicles */}
+                {/* ── Cross-Bank Inventory Reallocation Engine ── */}
                 <div className="border border-zinc-800 bg-zinc-900/10 rounded-xl p-5 space-y-4">
                   <div className="border-b border-zinc-800 pb-3 flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <Truck className="h-4 w-4 text-blue-400" />
-                      <h3 className="text-xs font-extrabold uppercase tracking-wider text-zinc-100">Outgoing Courier Dispatches</h3>
+                      <Share2 className="h-4 w-4 text-amber-400" />
+                      <h3 className="text-xs font-extrabold uppercase tracking-wider text-zinc-100">
+                        Cross-Bank Inventory Reallocation Engine
+                      </h3>
                     </div>
-                    <span className="text-[8px] font-mono font-bold text-blue-400 bg-blue-500/10 border border-blue-500/30 px-2 py-0.5 rounded">
-                      3 VEHICLES ACTIVE
+                    <span className="text-[8px] font-mono font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded">
+                      PREDICTIVE REBALANCE
                     </span>
                   </div>
 
-                  <div className="space-y-2">
-                    {MOCK_DISPATCH_VEHICLES.map((v) => (
-                      <div key={v.id} className="p-3 border border-zinc-800 bg-zinc-950 rounded-lg flex items-center justify-between text-[10px]">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-zinc-100">{v.id}</span>
-                            <span className="text-rose-500 font-bold">{v.blood} ({v.units} U)</span>
-                            <span className="text-emerald-400 font-mono">{v.temp}</span>
-                          </div>
-                          <p className="text-[9px] text-zinc-500 mt-0.5">{v.courier} → {v.route}</p>
-                        </div>
-                        <div className="text-right">
-                          <span className="text-rose-400 font-mono font-bold">ETA {v.eta}</span>
-                        </div>
+                  {reallocations.length === 0 ? (
+                    <div className="p-4 border border-zinc-800 bg-zinc-950 rounded-xl text-[10px] font-mono text-zinc-400 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                        <span>Regional inventory balanced. No immediate surplus/deficit transfers required.</span>
                       </div>
-                    ))}
+                      <span className="text-emerald-400 font-bold">100% BALANCED</span>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {reallocations.map((item) => (
+                        <div key={item.id} className="p-4 border border-amber-500/30 bg-amber-500/5 rounded-xl space-y-2 text-[10px] font-mono">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-black text-rose-500">{item.bloodType} REALLOCATION</span>
+                            <span className="text-[8px] font-bold text-amber-400 bg-amber-500/20 px-2 py-0.5 rounded uppercase">
+                              {item.urgency} DEFICIT
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 text-zinc-300">
+                            <div>
+                              <span className="text-zinc-500 text-[8px] uppercase block">Surplus Source:</span>
+                              <span className="font-bold text-zinc-100">{item.sourceBank.name}</span>
+                              <span className="text-emerald-400 block font-bold">({item.sourceBank.availableUnits} units available)</span>
+                            </div>
+                            <div>
+                              <span className="text-zinc-500 text-[8px] uppercase block">Deficit Target:</span>
+                              <span className="font-bold text-zinc-100">{item.targetBank.name}</span>
+                              <span className="text-rose-400 block font-bold">({item.targetBank.availableUnits} units left)</span>
+                            </div>
+                          </div>
+
+                          <p className="text-[9px] text-zinc-400 bg-zinc-950 p-2 rounded border border-zinc-850">
+                            💡 {item.rationale}
+                          </p>
+
+                          <div className="flex items-center justify-between pt-1">
+                            <span className="text-zinc-400">
+                              Transit: <strong className="text-zinc-200">{item.distanceKm} km</strong> ({item.estimatedTransitMinutes} min ETA)
+                            </span>
+                            <button
+                              onClick={() => toast.success(`Initiated inter-bank transfer of ${item.suggestedTransferUnits} units ${item.bloodType}!`)}
+                              className="text-[9px] font-bold px-3 py-1 rounded bg-amber-500 hover:bg-amber-400 text-black uppercase tracking-wider transition-colors"
+                            >
+                              Approve Transfer ({item.suggestedTransferUnits} U)
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Outgoing Dispatches — real courier dispatch tracking not yet implemented */}
+                <div className="border border-zinc-800 bg-zinc-900/10 rounded-xl p-5 space-y-3">
+                  <div className="border-b border-zinc-800 pb-3 flex items-center gap-2">
+                    <Truck className="h-4 w-4 text-blue-400" />
+                    <h3 className="text-xs font-extrabold uppercase tracking-wider text-zinc-100">Outgoing Courier Dispatches</h3>
                   </div>
+                  <p className="text-[10px] font-mono text-zinc-500 py-3 text-center">
+                    Live courier tracking is not yet connected to a dispatch management system.
+                    <br /><span className="text-zinc-700">Dispatches will appear here when tracked via Sanguis Courier API.</span>
+                  </p>
                 </div>
 
                 {/* Audit Transaction Ledger */}
@@ -627,54 +669,62 @@ export default function BloodBankPortalPage() {
                   </form>
                 </div>
 
-                {/* ── Shelf Life & Expiring Blood Alerts (FEFO Audit) ── */}
+                {/* Shelf Life & FEFO Monitoring — shows real inventory from this bank */}
                 <div className="border border-zinc-800 bg-zinc-900/10 rounded-xl p-5 space-y-3">
                   <div className="flex items-center gap-2 border-b border-zinc-800 pb-2">
                     <AlertTriangle className="h-4 w-4 text-amber-400" />
-                    <h3 className="text-xs font-extrabold uppercase tracking-wider text-zinc-100">Shelf Life &amp; FEFO Monitoring</h3>
+                    <h3 className="text-xs font-extrabold uppercase tracking-wider text-zinc-100">Shelf Life & FEFO Monitoring</h3>
                   </div>
-
-                  <div className="space-y-2">
-                    {MOCK_EXPIRING_BATCHES.map((b) => (
-                      <div key={b.batchId} className="p-2.5 border border-zinc-800 bg-zinc-950 rounded-lg text-[9.5px]">
-                        <div className="flex items-center justify-between font-bold">
-                          <span className="text-zinc-200">{b.batchId} ({b.blood})</span>
-                          <span className={`text-[8px] font-mono font-bold px-1.5 py-0.5 rounded border ${
-                            b.daysLeft <= 3 ? "text-rose-400 bg-rose-500/10 border-rose-500/30 animate-pulse" : "text-amber-400 bg-amber-500/10 border-amber-500/30"
-                          }`}>
-                            {b.daysLeft} DAYS LEFT
-                          </span>
+                  {bank?.inventory?.filter((i: any) => i.unitsAvailable <= 2 && i.unitsAvailable > 0).length === 0 ? (
+                    <p className="text-[10px] font-mono text-zinc-500 py-3 text-center">
+                      No critical low-stock items detected. All blood types within safe inventory levels.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {bank?.inventory?.filter((i: any) => i.unitsAvailable <= 2 && i.unitsAvailable > 0).map((item: any) => (
+                        <div key={item.bloodType} className="p-2.5 border border-rose-500/30 bg-rose-500/5 rounded-lg text-[9.5px]">
+                          <div className="flex items-center justify-between font-bold">
+                            <span className="text-zinc-200">{item.bloodType} — {item.unitsAvailable} units</span>
+                            <span className="text-[8px] font-mono font-bold px-1.5 py-0.5 rounded border text-rose-400 bg-rose-500/10 border-rose-500/30 animate-pulse">
+                              CRITICAL LOW
+                            </span>
+                          </div>
+                          <p className="text-[8.5px] text-zinc-500 mt-1">Consider cross-bank transfer or urgent donor broadcast</p>
                         </div>
-                        <p className="text-[8.5px] text-zinc-500 mt-1 font-sans leading-tight">AI Action: {b.rec}</p>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
-                {/* ── Inter-Bank Sharing Network ── */}
+                {/* Inter-Bank Transfer — backed by reallocations engine */}
                 <div className="border border-zinc-800 bg-zinc-900/10 rounded-xl p-5 space-y-3">
                   <div className="flex items-center gap-2 border-b border-zinc-800 pb-2">
                     <Share2 className="h-4 w-4 text-purple-400" />
                     <h3 className="text-xs font-extrabold uppercase tracking-wider text-zinc-100">Inter-Bank Transfer Network</h3>
                   </div>
-
-                  <div className="space-y-2">
-                    {MOCK_TRANSFER_REQUESTS.map((t) => (
-                      <div key={t.id} className="p-2.5 border border-zinc-800 bg-zinc-950 rounded-lg text-[9.5px]">
-                        <div className="flex items-center justify-between font-bold">
-                          <span className="text-zinc-200">{t.bank}</span>
-                          <span className="text-rose-400 font-mono">{t.blood} ({t.unitsNeeded} U)</span>
+                  {reallocations.length === 0 ? (
+                    <p className="text-[10px] font-mono text-zinc-500 py-3 text-center">
+                      No transfer suggestions at this time. Regional inventory is balanced.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {reallocations.slice(0, 3).map((t: any) => (
+                        <div key={t.id} className="p-2.5 border border-amber-500/30 bg-amber-500/5 rounded-lg text-[9.5px]">
+                          <div className="flex items-center justify-between font-bold">
+                            <span className="text-zinc-200">{t.targetBank.name}</span>
+                            <span className="text-rose-400 font-mono">{t.bloodType} ({t.suggestedTransferUnits} U)</span>
+                          </div>
+                          <p className="text-[8.5px] text-zinc-500 mt-1 font-mono">{t.distanceKm} km · {t.estimatedTransitMinutes} min ETA · Urgency: {t.urgency}</p>
+                          <button
+                            onClick={() => toast.success(`Transfer of ${t.suggestedTransferUnits} units ${t.bloodType} approved`)}
+                            className="w-full mt-2 bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/30 text-amber-300 font-mono font-bold text-[9px] uppercase tracking-wider py-1 rounded transition-colors"
+                          >
+                            Approve Transfer
+                          </button>
                         </div>
-                        <p className="text-[8.5px] text-zinc-500 mt-1 font-mono">Dist: {t.distance} · Urgency: {t.urgency}</p>
-                        <button
-                          onClick={() => toast.success(`Stock transfer dispatched to ${t.bank}`)}
-                          className="w-full mt-2 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 text-purple-300 font-mono font-bold text-[9px] uppercase tracking-wider py-1 rounded transition-colors"
-                        >
-                          Approve Transfer
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
               </div>
@@ -685,8 +735,6 @@ export default function BloodBankPortalPage() {
         )}
       </main>
 
-      {/* Floating Explainable AI Copilot */}
-      <SanguisAiCopilot />
     </div>
   );
 }

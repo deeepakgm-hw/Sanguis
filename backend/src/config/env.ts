@@ -32,6 +32,7 @@ export const env = cleanEnv(process.env, {
   GOOGLE_CLIENT_SECRET: str({ default: "" }),
   GITHUB_CLIENT_ID: str({ default: "" }),
   GITHUB_CLIENT_SECRET: str({ default: "" }),
+  GOOGLE_PLACES_API_KEY: str({ default: "" }),
 });
 
 // Fail fast: hackathon debugging time is precious, so we validate secrets

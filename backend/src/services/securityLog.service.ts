@@ -32,7 +32,7 @@ export async function logSecurityEvent({
       ip = typeof rawIp === "string" ? rawIp.split(",")[0].trim() : String(rawIp);
       userAgent = req.headers["user-agent"];
       if (req.user) {
-        email = req.user.email;
+        email = (req.user as any).email;
       }
     }
 

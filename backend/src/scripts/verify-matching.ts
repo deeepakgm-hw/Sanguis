@@ -113,6 +113,17 @@ const makeMockCandidate = (trustScore: number, distanceKm: number): MatchCandida
   donor: { trustScore } as unknown as DonorDoc,
   distanceKm,
   trustScore,
+  finalScore: trustScore - (distanceKm * 0.5),
+  fatigueShield: {
+    recentPings30d: 0,
+    fatigueLevel: "low",
+    fatiguePenalty: 0,
+    tradeoffScore: {
+      etaCostMinutes: 0,
+      sustainabilityRatingPct: 100,
+      explanation: "No fatigue penalty",
+    },
+  },
 });
 
 const unranked = [

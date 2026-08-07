@@ -9,12 +9,18 @@ const geoPointBody = z.object({
     .length(2, "Coordinates must be [longitude, latitude]"),
 });
 
+// Enforces either 10-digit Indian mobile format or full E.164 with country code
+const PHONE_REGEX = /^(\+91[\-\s]?)?[6-9]\d{9}$/;
+
 export const createBloodBankSchema = z.object({
   body: z.object({
     name: z.string().trim().min(2).max(200),
-    address: z.string().trim().min(2),
+    address: z.string().trim().min(5, "Address must be at least 5 characters"),
     location: geoPointBody,
-    contactPhone: z.string().trim().min(5),
+    contactPhone: z
+      .string()
+      .trim()
+      .regex(PHONE_REGEX, "contactPhone must be a valid 10-digit mobile number or E.164 format (+91XXXXXXXXXX)"),
   }),
   query: z.object({}).optional(),
   params: z.object({}).optional(),

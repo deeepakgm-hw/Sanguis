@@ -50,3 +50,11 @@ export const otpLimiter = buildLimiter(
   env.NODE_ENV === "production" ? 5 : 500,
   "otp"
 );
+
+// Rate limit for Google Places API endpoints (protects Google API quota)
+export const googlePlacesLimiter = buildLimiter(
+  15 * 60 * 1000,
+  env.NODE_ENV === "production" ? 30 : 200,
+  "google_places"
+);
+

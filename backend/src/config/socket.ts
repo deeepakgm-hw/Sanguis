@@ -31,6 +31,23 @@ export function initSocket(httpServer: HttpServer): Server {
     // notification via io.to(`user:${userId}`).emit(...)
     if (userId) socket.join(`user:${userId}`);
 
+    // Join global dispatch channel for live map updates
+    socket.join("live-dispatch");
+
+    // Handle live donor GPS position updates
+    socket.on("donor:update_location", (data: { lat: number; lng: number; bloodType?: string; donorId?: string }) => {
+      logger.info({ userId, data }, "Received donor live location update");
+      // Broadcast live movement to all dispatch and request detail map listeners
+      io.to("live-dispatch").emit("donor:location_updated", {
+        userId,
+        donorId: data.donorId,
+        bloodType: data.bloodType,
+        lat: data.lat,
+        lng: data.lng,
+        updatedAt: new Date().toISOString(),
+      });
+    });
+
     socket.on("disconnect", () => logger.info({ userId, socketId: socket.id }, "Socket disconnected"));
   });
 

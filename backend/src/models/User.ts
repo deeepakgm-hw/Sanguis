@@ -7,6 +7,7 @@ export interface IUser extends Document {
   _id: Types.ObjectId;
   name: string;
   email: string;
+  phone?: string;
   password: string;
   role: UserRole;
   avatarUrl?: string;
@@ -27,6 +28,7 @@ const userSchema = new Schema<IUser>(
   {
     name: { type: String, required: true, trim: true, maxlength: 100 },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true, index: true },
+    phone: { type: String, trim: true, sparse: true, index: true },
     password: { type: String, required: true, select: false }, // never returned by default
     role: { type: String, enum: ["user", "admin", "moderator", "hospital", "donor"], default: "user" },
     avatarUrl: { type: String },

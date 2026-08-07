@@ -3,7 +3,9 @@ import { AuditLog } from "../models/AuditLog";
 import { logger } from "../utils/logger";
 
 interface AuditParams {
-  req: Request;
+  req?: Request;
+  actor?: string;
+  actorId?: string;
   action: string;
   resourceType: string;
   resourceId?: string;
@@ -17,17 +19,17 @@ interface AuditParams {
  * but we DO log it loudly so ops notices if the audit pipeline breaks.
  */
 export async function recordAudit(params: AuditParams): Promise<void> {
-  const { req, action, resourceType, resourceId, before, after } = params;
+  const { req, actor, actorId, action, resourceType, resourceId, before, after } = params;
   try {
     await AuditLog.create({
-      actor: req.user?.sub ?? null,
+      actor: actor ?? actorId ?? req?.user?.sub ?? null,
       action,
       resourceType,
       resourceId,
       before,
       after,
-      ip: req.ip,
-      userAgent: req.headers["user-agent"],
+      ip: req?.ip,
+      userAgent: req?.headers ? req.headers["user-agent"] : undefined,
     });
   } catch (err) {
     logger.error({ err, action, resourceType }, "Failed to write audit log");

@@ -50,7 +50,11 @@ export const createBloodBank = asyncHandler(async (req: Request, res: Response) 
  * GET /api/v1/bloodbanks
  */
 export const listBloodBanks = asyncHandler(async (req: Request, res: Response) => {
-  const { bloodType, lat, lng, radius } = req.query as Record<string, string | undefined>;
+  const { bloodType, lat, lng, radius, page, limit } = req.query as Record<string, string | undefined>;
+
+  const pageNum = Math.max(1, Number(page) || 1);
+  const limitNum = Math.min(100, Math.max(1, Number(limit) || 20));
+  const skipNum = (pageNum - 1) * limitNum;
 
   // If lat, lng, and radius are present, run inventory proximity logic
   if (lat && lng) {
@@ -67,7 +71,7 @@ export const listBloodBanks = asyncHandler(async (req: Request, res: Response) =
     return ApiResponse.success(res, results, "Regional supply index fetched");
   }
 
-  // Otherwise, return normal list (verified only unless admin)
+  // Otherwise, return normal list with pagination (verified only unless admin)
   const filter: Record<string, unknown> = {};
   if (req.user!.role !== "admin" && req.user!.role !== "moderator") {
     filter.isVerified = true;
@@ -76,9 +80,23 @@ export const listBloodBanks = asyncHandler(async (req: Request, res: Response) =
     filter["inventory.bloodType"] = bloodType;
   }
 
-  const banks = await BloodBank.find(filter).populate("owner", "name email");
+  const [banks, total] = await Promise.all([
+    BloodBank.find(filter)
+      .populate("owner", "name email")
+      .skip(skipNum)
+      .limit(limitNum),
+    BloodBank.countDocuments(filter),
+  ]);
 
-  return ApiResponse.success(res, banks, "Blood banks fetched");
+  return ApiResponse.success(res, {
+    items: banks,
+    pagination: {
+      total,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(total / limitNum),
+    },
+  }, "Blood banks fetched");
 });
 
 /**
@@ -221,4 +239,19 @@ export const verifyBloodBank = asyncHandler(async (req: Request, res: Response) 
   });
 
   return ApiResponse.success(res, bank, "Verification status updated");
+});
+
+/**
+ * Cross-Bank Inventory Reallocation Suggestions.
+ * GET /api/v1/bloodbanks/reallocation/suggestions
+ */
+export const getReallocationSuggestions = asyncHandler(async (req: Request, res: Response) => {
+  const lat = req.query.lat ? parseFloat(req.query.lat as string) : 13.0827;
+  const lng = req.query.lng ? parseFloat(req.query.lng as string) : 80.2707;
+  const radiusKm = req.query.radiusKm ? parseFloat(req.query.radiusKm as string) : 50;
+
+  const { detectRegionalImbalances } = await import("../services/reallocation.service");
+  const suggestions = await detectRegionalImbalances(lat, lng, radiusKm);
+
+  return ApiResponse.success(res, suggestions, "Predictive cross-bank reallocation suggestions computed");
 });

@@ -262,29 +262,28 @@ async function resolveUrgencyLevel(
 // RETURN TYPE
 // ---------------------------------------------------------------------------
 
+import { Match } from "../models/Match";
+
 export interface MatchCandidate {
   donor: DonorDoc;
   distanceKm: number;
-  // trustScore populated by Teammate B's AI service; defaults to 0 if not yet
-  // scored — donors with trustScore 0 simply rank lower, they are never excluded.
   trustScore: number;
+  // Rotation-Aware Donor Fatigue & Burnout Shield
+  fatigueShield: {
+    recentPings30d: number;
+    fatigueLevel: "low" | "moderate" | "high";
+    fatiguePenalty: number;
+    tradeoffScore: {
+      etaCostMinutes: number;
+      sustainabilityRatingPct: number;
+      explanation: string;
+    };
+  };
+  finalScore: number;
 }
 
-// ---------------------------------------------------------------------------
-// RANKING HELPER (exported for unit tests)
-//
-// Pure sort — no DB calls, no side effects.
-// Primary:   trustScore DESC  (higher trust = earlier in list)
-// Tiebreak:  distanceKm ASC   (closer = earlier when trust is equal)
-// ---------------------------------------------------------------------------
-
 export function rankCandidates(candidates: MatchCandidate[]): MatchCandidate[] {
-  return [...candidates].sort((a, b) => {
-    // trustScore populated by Teammate B's AI service; defaults to 0 if not yet
-    // scored — donors with trustScore 0 simply rank lower, they are never excluded.
-    if (b.trustScore !== a.trustScore) return b.trustScore - a.trustScore; // DESC
-    return a.distanceKm - b.distanceKm; // ASC tiebreaker
-  });
+  return [...candidates].sort((a, b) => b.finalScore - a.finalScore);
 }
 
 // ---------------------------------------------------------------------------
@@ -373,22 +372,68 @@ export async function findMatchesForRequest(
     );
   }
 
-  // ── 6. Compute distances + build candidate list ────────────────────────────
-  const candidates: MatchCandidate[] = availableEligible.map((donor) => {
-    const [dLng, dLat] = donor.location.coordinates; // GeoJSON: [lng, lat]
-    return {
-      donor,
-      distanceKm: haversineKm(reqLat, reqLng, dLat, dLng),
-      trustScore: donor.trustScore,
-    };
-  });
+  // ── 6. Compute distances + Fatigue Shield metrics ──────────────────────────
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-  // ── 7. Rank: trustScore DESC, distanceKm ASC ─────────────────────────────
+  const candidates: MatchCandidate[] = await Promise.all(
+    availableEligible.map(async (donor) => {
+      const [dLng, dLat] = donor.location.coordinates;
+      const dist = haversineKm(reqLat, reqLng, dLat, dLng);
+
+      // Query recent dispatch load (30d) for rotation-aware matching
+      let recentPings30d = 0;
+      try {
+        recentPings30d = await Match.countDocuments({
+          donor: donor._id,
+          createdAt: { $gte: thirtyDaysAgo },
+        });
+      } catch {
+        recentPings30d = 0;
+      }
+
+      let fatigueLevel: "low" | "moderate" | "high" = "low";
+      let fatiguePenalty = 0;
+      let sustainabilityRatingPct = 98;
+
+      if (recentPings30d >= 4) {
+        fatigueLevel = "high";
+        fatiguePenalty = 25;
+        sustainabilityRatingPct = 45;
+      } else if (recentPings30d >= 2) {
+        fatigueLevel = "moderate";
+        fatiguePenalty = 10;
+        sustainabilityRatingPct = 78;
+      }
+
+      const etaMin = Math.round((dist / 35) * 60); // assume 35km/h avg speed
+      const baseTrust = donor.trustScore || 100;
+      const finalScore = baseTrust - fatiguePenalty - dist * 0.5;
+
+      return {
+        donor,
+        distanceKm: dist,
+        trustScore: baseTrust,
+        fatigueShield: {
+          recentPings30d,
+          fatigueLevel,
+          fatiguePenalty,
+          tradeoffScore: {
+            etaCostMinutes: etaMin,
+            sustainabilityRatingPct,
+            explanation: `+${etaMin} min transit ETA · ${sustainabilityRatingPct}% donor pool sustainability protection score`,
+          },
+        },
+        finalScore,
+      };
+    })
+  );
+
+  // ── 7. Rank by finalScore DESC (rotation-balanced) ─────────────────────────
   const ranked = rankCandidates(candidates);
 
   logger.info(
     { requestId, eligible: ranked.length, geoCandidates: geoCandidates.length, voluntarilyExcluded: eligible.length - availableEligible.length },
-    "matching: findMatchesForRequest complete"
+    "matching: findMatchesForRequest complete with Donor Fatigue Shield"
   );
 
   return ranked;

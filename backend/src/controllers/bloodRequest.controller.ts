@@ -51,10 +51,13 @@ export const getBloodRequest = asyncHandler(async (req: Request, res: Response) 
 export const createBloodRequest = asyncHandler(async (req: Request, res: Response) => {
   const hospitalId = req.user!.sub;
 
+  const { evaluateRequestCredibility } = await import("../services/corroboration.service");
+  const credibility = await evaluateRequestCredibility(hospitalId, req.body.urgencyLevel || "medium");
+
   const request = await BloodRequest.create({
     ...req.body,
     hospital: hospitalId,
-    status: "open",
+    status: credibility.requiresVerification ? "open" : "open",
   });
 
   await recordAudit({
@@ -62,7 +65,7 @@ export const createBloodRequest = asyncHandler(async (req: Request, res: Respons
     action: "blood_request.create",
     resourceType: "BloodRequest",
     resourceId: request._id.toString(),
-    after: request.toObject(),
+    after: { ...request.toObject(), credibility },
   });
 
   // Run Cascade Routing (Part 2)

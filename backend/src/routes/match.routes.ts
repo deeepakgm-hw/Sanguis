@@ -12,6 +12,9 @@ import {
 
 const router = Router();
 
+/** Compatibility matrix — public/authenticated. */
+router.get("/compatibility", matchController.getCompatibilityMatrix);
+
 /** List matches — authenticated. Filtered to owner donor profile for non-admins. */
 router.get(
   "/",
@@ -42,6 +45,13 @@ router.patch(
   }),
   validate(respondMatchSchema),
   matchController.respondToMatch
+);
+
+/** Post-emergency outcome loop closure — hospital/admin confirmed. */
+router.post(
+  "/:id/outcome",
+  requireAuth,
+  matchController.confirmOutcome
 );
 
 /** Delete match — admin only. */

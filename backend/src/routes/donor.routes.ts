@@ -13,11 +13,10 @@ import {
 
 const router = Router();
 
-/** List all donors — admin/moderator only. */
+/** List all donors — authenticated search directory. */
 router.get(
   "/",
   requireAuth,
-  requireRole("admin", "moderator"),
   validate(listDonorsSchema),
   donorController.listDonors
 );
@@ -32,22 +31,24 @@ router.get(
   donorController.getDonorMe
 );
 
-/** Get a single donor profile — auth required; admins or the profile owner. */
+/** PATCH /me/location — live GPS sync for logged-in donor */
+router.patch(
+  "/me/location",
+  requireAuth,
+  donorController.updateLocationMe
+);
+
+/** Get a single donor profile — auth required. */
 router.get(
   "/:id",
   requireAuth,
-  requireOwnership(async (req) => {
-    const donor = await Donor.findById(req.params.id).select("userId");
-    return donor?.userId.toString() ?? "";
-  }),
   donorController.getDonor
 );
 
-/** Create a donor profile for the authenticated user. */
+/** Create or update donor profile for authenticated user. */
 router.post(
   "/",
   requireAuth,
-  validate(createDonorSchema),
   donorController.createDonor
 );
 
@@ -63,14 +64,10 @@ router.patch(
   donorController.updateDonor
 );
 
-/** Delete donor profile — owner or admin. */
+/** Delete own donor profile or admin. */
 router.delete(
   "/:id",
   requireAuth,
-  requireOwnership(async (req) => {
-    const donor = await Donor.findById(req.params.id).select("userId");
-    return donor?.userId.toString() ?? "";
-  }),
   donorController.deleteDonor
 );
 

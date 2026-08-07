@@ -28,7 +28,6 @@ import {
   XCircle,
 } from "lucide-react";
 import Link from "next/link";
-import { SanguisAiCopilot } from "@/components/widgets/ai-copilot";
 import { MapView, MapMarker } from "@/components/widgets/map-view";
 
 interface EmergencyRequest {
@@ -73,31 +72,31 @@ export default function HospitalCommandCenterPage() {
   const { isBootstrapping } = useAuth();
   const user = useAuthStore((s) => s.user);
 
-  // --- Real-time Mock / Live Data ---
+  // --- Command Center State (pre-populated for demonstration) ---
   const [emergencies, setEmergencies] = useState<EmergencyRequest[]>([
     {
       id: "req-101",
-      patientName: "Aarav Sharma",
+      patientName: "Patient A",
       bloodType: "O-",
       unitsNeeded: 4,
       urgencyLevel: "critical",
-      hospital: "Apollo Hospital Main",
-      doctor: "Dr. K. Raghavan (Cardiology)",
+      hospital: "General Hospital — Emergency Wing",
+      doctor: "Attending Physician (Cardiology)",
       status: "courier_transit",
       countdownSeconds: 680,
       latitude: 13.0827,
       longitude: 80.2707,
       createdAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-      aiRationale: "O- critical emergency. Local inventories depleted. Spatial Cascade automatically escalated request to 12 nearby O- donors and dispatched courier to Central Bank (12km).",
+      aiRationale: "O- critical emergency. Local inventories depleted. Spatial Cascade automatically escalated request to nearby O- donors and dispatched courier to the closest verified blood bank.",
     },
     {
       id: "req-102",
-      patientName: "Priyanka Roy",
+      patientName: "Patient B",
       bloodType: "AB-",
       unitsNeeded: 2,
       urgencyLevel: "high",
-      hospital: "Fortis Malar Emergency",
-      doctor: "Dr. Ananya Sen (Trauma Care)",
+      hospital: "Regional Medical Center — Trauma",
+      doctor: "Attending Physician (Trauma Care)",
       status: "sms_broadcast",
       countdownSeconds: 1440,
       latitude: 13.0067,
@@ -107,27 +106,27 @@ export default function HospitalCommandCenterPage() {
     },
     {
       id: "req-103",
-      patientName: "Michael Gomes",
+      patientName: "Patient C",
       bloodType: "B+",
       unitsNeeded: 5,
       urgencyLevel: "medium",
-      hospital: "Manipal Hospital Hub",
-      doctor: "Dr. Vikram Seth (Hematology)",
+      hospital: "City Blood Coordination Hub",
+      doctor: "Attending Physician (Hematology)",
       status: "match_secured",
       countdownSeconds: 2400,
       latitude: 13.0475,
       longitude: 80.2089,
       createdAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
-      aiRationale: "B+ request secured. Match Rajesh Kumar is en-route. Transit telemetry active.",
+      aiRationale: "B+ request secured. Donor match confirmed and en-route. Transit telemetry active.",
     },
     {
       id: "req-104",
-      patientName: "Karan Johar",
+      patientName: "Patient D",
       bloodType: "O+",
       unitsNeeded: 3,
       urgencyLevel: "low",
-      hospital: "AIIMS Satellite Clinic",
-      doctor: "Dr. Preeti Zinta (Surgery)",
+      hospital: "District Clinic — Scheduled Procedure",
+      doctor: "Attending Physician (Surgery)",
       status: "routing_cascade",
       countdownSeconds: 3600,
       latitude: 13.1147,
@@ -142,11 +141,11 @@ export default function HospitalCommandCenterPage() {
 
   // Donor telemetry
   const [donors, setDonors] = useState<DonorCandidate[]>([
-    { id: "don-1", name: "Rajesh Kumar", bloodType: "O-", trustScore: 98, etaMinutes: 12, status: "en_route", lat: 13.0910, lng: 80.2550, phone: "+91 98401 22341" },
-    { id: "don-2", name: "Sunita Deshmukh", bloodType: "O-", trustScore: 95, etaMinutes: 15, status: "accepted", lat: 13.0720, lng: 80.2810, phone: "+91 99620 44512" },
-    { id: "don-3", name: "Amit Patel", bloodType: "O-", trustScore: 89, etaMinutes: 18, status: "pending_response", lat: 13.1020, lng: 80.2600, phone: "+91 98840 99876" },
-    { id: "don-4", name: "Pooja Hegde", bloodType: "AB-", trustScore: 99, etaMinutes: 9, status: "declined", lat: 13.0200, lng: 80.2100, phone: "+91 90030 55432" },
-    { id: "don-5", name: "Arjun Rampal", bloodType: "B+", trustScore: 92, etaMinutes: 22, status: "accepted", lat: 13.0410, lng: 80.1990, phone: "+91 91760 88776" },
+    { id: "don-1", name: "Donor A", bloodType: "O-", trustScore: 98, etaMinutes: 12, status: "en_route", lat: 13.0910, lng: 80.2550, phone: "—" },
+    { id: "don-2", name: "Donor B", bloodType: "O-", trustScore: 95, etaMinutes: 15, status: "accepted", lat: 13.0720, lng: 80.2810, phone: "—" },
+    { id: "don-3", name: "Donor C", bloodType: "O-", trustScore: 89, etaMinutes: 18, status: "pending_response", lat: 13.1020, lng: 80.2600, phone: "—" },
+    { id: "don-4", name: "Donor D", bloodType: "AB-", trustScore: 99, etaMinutes: 9, status: "declined", lat: 13.0200, lng: 80.2100, phone: "—" },
+    { id: "don-5", name: "Donor E", bloodType: "B+", trustScore: 92, etaMinutes: 22, status: "accepted", lat: 13.0410, lng: 80.1990, phone: "—" },
   ]);
 
   // Blood banks
@@ -155,6 +154,11 @@ export default function HospitalCommandCenterPage() {
     { id: "bank-2", name: "Adyar Regional Repository", unitsAvailable: 7, distanceKm: 8.5, lat: 13.0010, lng: 80.2520 },
     { id: "bank-3", name: "North Chennai Blood Hub", unitsAvailable: 2, distanceKm: 12.1, lat: 13.1420, lng: 80.2910 },
   ]);
+
+  // Real hospital data sourced from Google Places API / DB lookup
+  const [realHospitals, setRealHospitals] = useState<any[]>([]);
+  const [poweredByGoogle, setPoweredByGoogle] = useState(true);
+  const [selectedMarker, setSelectedMarker] = useState<MapMarker | null>(null);
 
   // Telemetry loop for live moving donors & countdowns
   useEffect(() => {
@@ -194,8 +198,30 @@ export default function HospitalCommandCenterPage() {
   // Update selected request cache
   useEffect(() => {
     const req = emergencies.find((e) => e.id === selectedReqId) || null;
-    setSelectedReq(req);
+    setSelectedReqId(req?.id || "req-101");
   }, [selectedReqId, emergencies]);
+
+  // Center coordinates for spatial map
+  const centerLat = emergencies.find(e => e.id === selectedReqId)?.latitude ?? 13.0827;
+  const centerLng = emergencies.find(e => e.id === selectedReqId)?.longitude ?? 80.2707;
+
+  // Fetch real nearby hospital data from backend Google Places API route
+  useEffect(() => {
+    async function fetchHospitals() {
+      try {
+        const res = await api.get("/hospitals/nearby", {
+          params: { lat: centerLat, lng: centerLng, radius: 15000 },
+        });
+        if (res.data?.data?.hospitals) {
+          setRealHospitals(res.data.data.hospitals);
+          setPoweredByGoogle(res.data.data.poweredByGoogle ?? true);
+        }
+      } catch (err) {
+        console.warn("Real hospital lookup failed — falling back to local markers", err);
+      }
+    }
+    fetchHospitals();
+  }, [centerLat, centerLng]);
 
   // Route auth guard
   useEffect(() => {
@@ -225,18 +251,35 @@ export default function HospitalCommandCenterPage() {
 
   // Convert markers for MapView component
   const mapMarkers: MapMarker[] = [];
-  // Center is the selected hospital
-  const centerLat = selectedReq?.latitude ?? 13.0827;
-  const centerLng = selectedReq?.longitude ?? 80.2707;
 
-  // Add hospital
+  // Add center selected emergency hospital
   mapMarkers.push({
     id: selectedReq?.id ?? "hospital-center",
     lat: centerLat,
     lng: centerLng,
     layerType: "hospital",
-    label: selectedReq?.hospital ?? "Hospital Hub",
-    sublabel: "Clinical Dispatch Center",
+    label: selectedReq?.hospital ?? "General Hospital — Emergency Wing",
+    sublabel: "Active Clinical Dispatch Center",
+    dataSource: "manual",
+  });
+
+  // Add real Google Places hospitals if loaded
+  realHospitals.forEach((h: any, idx: number) => {
+    const hLat = h.location?.coordinates?.[1];
+    const hLng = h.location?.coordinates?.[0];
+    if (hLat && hLng) {
+      mapMarkers.push({
+        id: h.googlePlaceId || `real-hosp-${idx}`,
+        lat: hLat,
+        lng: hLng,
+        layerType: "hospital",
+        label: h.name,
+        sublabel: h.formattedAddress,
+        address: h.formattedAddress,
+        phone: h.phoneNumber,
+        dataSource: h.dataSource || "google_places",
+      });
+    }
   });
 
   // Add nearby blood banks
@@ -374,8 +417,40 @@ export default function HospitalCommandCenterPage() {
             
             {/* Live radar map window */}
             <div className="h-96 relative">
-              <MapView markers={mapMarkers} centerLat={centerLat} centerLng={centerLng} radiusKm={10} />
+              <MapView
+                markers={mapMarkers}
+                centerLat={centerLat}
+                centerLng={centerLng}
+                radiusKm={10}
+                onMarkerClick={(m) => setSelectedMarker(m)}
+                poweredByGoogle={poweredByGoogle}
+              />
             </div>
+
+            {/* Selected Marker Detail Card with Attribution */}
+            {selectedMarker && (
+              <div className="p-3 border-t border-zinc-800 bg-zinc-950/90 text-xs space-y-1 relative">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-zinc-100 uppercase flex items-center gap-1.5">
+                    <Building className="h-3.5 w-3.5 text-emerald-400" />
+                    {selectedMarker.label}
+                  </span>
+                  <button onClick={() => setSelectedMarker(null)} className="text-[10px] text-zinc-500 hover:text-zinc-300 font-mono">✕ Close</button>
+                </div>
+                {selectedMarker.address && (
+                  <p className="text-[10px] text-zinc-400 font-sans">{selectedMarker.address}</p>
+                )}
+                {selectedMarker.phone && (
+                  <p className="text-[9.5px] text-zinc-500 font-mono flex items-center gap-1">
+                    <Phone className="h-3 w-3 text-emerald-500" /> {selectedMarker.phone}
+                  </p>
+                )}
+                <div className="pt-1 flex items-center justify-between text-[8px] font-mono text-zinc-500 uppercase">
+                  <span>LAT/LNG: {selectedMarker.lat.toFixed(4)}, {selectedMarker.lng.toFixed(4)}</span>
+                  <span className="text-blue-400 font-bold">Data via Google Places</span>
+                </div>
+              </div>
+            )}
 
             {/* Traffic & Map Metadata Overlay */}
             <div className="p-3 border-t border-zinc-800 bg-zinc-950/60 grid grid-cols-3 gap-2 text-center text-[9px] font-mono text-zinc-500 uppercase">
@@ -506,9 +581,6 @@ export default function HospitalCommandCenterPage() {
         </div>
 
       </div>
-
-      {/* Floating Explainable AI Copilot */}
-      <SanguisAiCopilot />
     </main>
   );
 }

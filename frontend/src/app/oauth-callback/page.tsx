@@ -28,7 +28,7 @@ export default function OAuthCallbackPage() {
     async function handleCallback() {
       try {
         // 1. Set the token
-        setAccessToken(token);
+        setAccessToken(token!);
 
         // 2. Fetch user details
         const response = await api.get("/auth/me");

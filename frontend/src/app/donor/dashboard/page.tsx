@@ -350,21 +350,21 @@ export default function DonorDashboardPage() {
                   </p>
                 </div>
 
-                {/* PRIMARY CTA: RESPOND TO EMERGENCY */}
-                <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0">
+                {/* PRIMARY CTA: SINGLE LARGE UNAMBIGUOUS TOUCH TARGET */}
+                <div className="flex flex-col items-center gap-2 shrink-0 w-full md:w-auto">
                   <button
                     id="cta-respond-emergency-hero"
                     onClick={() => handleRespondMatch(pendingMatch._id, "accept")}
-                    className="w-full sm:w-auto bg-rose-600 hover:bg-rose-500 text-white font-black text-sm uppercase tracking-wider px-8 py-4 rounded-xl shadow-xl shadow-rose-950/60 transition-all hover:scale-105 flex items-center justify-center gap-2 group"
+                    className="w-full md:w-72 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm uppercase tracking-wider h-14 rounded-xl shadow-2xl shadow-emerald-950/60 transition-all hover:scale-[1.02] flex items-center justify-center gap-2.5 ring-2 ring-emerald-400/50 animate-pulse"
                   >
-                    <AlertTriangle className="h-5 w-5 group-hover:animate-bounce" />
-                    Respond To Emergency Now
+                    <CheckCircle2 className="h-6 w-6 shrink-0" />
+                    <span>Accept Emergency Dispatch</span>
                   </button>
                   <button
                     onClick={() => handleRespondMatch(pendingMatch._id, "decline")}
-                    className="w-full sm:w-auto border border-zinc-800 bg-zinc-900/60 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 font-bold text-xs uppercase tracking-wider px-4 py-4 rounded-xl transition-colors"
+                    className="text-[10px] font-mono text-zinc-500 hover:text-rose-400 underline decoration-zinc-800 hover:decoration-rose-500 transition-colors py-1"
                   >
-                    Decline
+                    Unable to respond to this request
                   </button>
                 </div>
               </div>
@@ -573,18 +573,18 @@ export default function DonorDashboardPage() {
                             </p>
                           </div>
 
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-col items-end gap-1">
                             {isPending ? (
                               <>
                                 <button
                                   onClick={() => handleRespondMatch(m._id, "accept")}
-                                  className="text-xs font-black h-9 px-5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg uppercase tracking-wider shadow-lg shadow-rose-950/40 flex items-center gap-1.5 transition-all hover:scale-105"
+                                  className="text-xs font-black h-11 px-6 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl uppercase tracking-wider shadow-lg shadow-emerald-950/40 flex items-center gap-2 transition-all hover:scale-105"
                                 >
-                                  <AlertTriangle className="h-3.5 w-3.5" /> Respond To Emergency
+                                  <CheckCircle2 className="h-4 w-4" /> Accept Dispatch
                                 </button>
                                 <button
                                   onClick={() => handleRespondMatch(m._id, "decline")}
-                                  className="text-xs font-bold h-9 px-3 border border-zinc-800 bg-zinc-900/50 hover:bg-zinc-900 text-zinc-400 hover:text-zinc-200 rounded-lg uppercase transition-colors"
+                                  className="text-[9px] text-zinc-500 hover:text-rose-400 underline transition-colors"
                                 >
                                   Decline
                                 </button>

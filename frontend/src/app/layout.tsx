@@ -9,7 +9,13 @@ export const metadata: Metadata = {
   title: "Sanguis — Blood Donor Matching & Emergency Response",
   description: "Real-time blood donor matching connecting verified hospitals with eligible donors, powered by AI urgency scoring and geo-based dispatch.",
   icons: {
-    icon: "/logo.jpg",
+    icon: [
+      { url: "/logo.jpg" },
+      { url: "/favicon.ico" },
+      { url: "/logo.png", type: "image/png" },
+    ],
+    shortcut: "/favicon.ico",
+    apple: "/logo.jpg",
   },
 };
 
