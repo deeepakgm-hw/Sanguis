@@ -21,6 +21,8 @@ import notificationRoutes from "./routes/notification.routes";
 import donorRoutes from "./routes/donor.routes";
 import bloodRequestRoutes from "./routes/bloodRequest.routes";
 import matchRoutes from "./routes/match.routes";
+import bloodBankRoutes from "./routes/bloodbank.routes";
+import forecastRoutes from "./routes/forecast.routes";
 
 export function createApp(): Application {
   const app = express();
@@ -52,6 +54,8 @@ export function createApp(): Application {
   app.use("/api/v1/donors", donorRoutes);
   app.use("/api/v1/blood-requests", bloodRequestRoutes);
   app.use("/api/v1/matches", matchRoutes);
+  app.use("/api/v1/bloodbanks", bloodBankRoutes);
+  app.use("/api/v1/forecast", forecastRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

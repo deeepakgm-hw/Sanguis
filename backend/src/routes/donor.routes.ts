@@ -4,6 +4,7 @@ import { requireRole, requireOwnership } from "../middlewares/rbac";
 import { validate } from "../middlewares/validate";
 import * as donorController from "../controllers/donor.controller";
 import { Donor } from "../models/Donor";
+import availabilityRoutes from "./availability.routes";
 import {
   createDonorSchema,
   updateDonorSchema,
@@ -20,6 +21,9 @@ router.get(
   validate(listDonorsSchema),
   donorController.listDonors
 );
+
+/** Availability calendar sub-router — must be before /me so it routes correctly */
+router.use("/me/availability", availabilityRoutes);
 
 /** Get current donor profile */
 router.get(

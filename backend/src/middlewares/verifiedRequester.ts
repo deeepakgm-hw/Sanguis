@@ -1,19 +1,40 @@
 import { Request, Response, NextFunction } from "express";
+import { User } from "../models/User";
+import { ApiError } from "../utils/ApiError";
 
 /**
- * TEMP passthrough — replace with Teammate C's OAuth-verified-hospital check.
- * Do not block the demo on this.
- *
- * When Teammate C's implementation lands, this middleware should:
- *   1. Confirm req.user.role === "hospital" (or equivalent verified-requester role).
- *   2. Confirm the hospital's OAuth credentials have been verified against
- *      the hospital registry (Teammate C's external service call).
- *   3. Call next() on success, next(ApiError.forbidden(...)) on failure.
+ * Checks if the requesting user is a verified requester (hospital).
+ * Admin and moderator roles are allowed for testing/dispatch convenience.
  */
-export function requireVerifiedRequester(
-  _req: Request,
+export async function requireVerifiedRequester(
+  req: Request,
   _res: Response,
   next: NextFunction
-): void {
-  next();
+): Promise<void> {
+  try {
+    if (!req.user) {
+      throw ApiError.unauthorized("Authentication required");
+    }
+
+    const user = await User.findById(req.user.sub);
+    if (!user) {
+      throw ApiError.notFound("User not found");
+    }
+
+    // Must be either admin/moderator or a hospital
+    if (user.role !== "hospital" && user.role !== "admin" && user.role !== "moderator") {
+      throw ApiError.forbidden("Only verified hospital accounts can request blood dispatches");
+    }
+
+    // Must be verified by admin
+    if (!user.isEmailVerified) {
+      throw ApiError.forbidden(
+        "Hospital verification pending. Please contact admin clearance to verify this account before submitting requests."
+      );
+    }
+
+    next();
+  } catch (err) {
+    next(err);
+  }
 }

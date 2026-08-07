@@ -6,6 +6,7 @@ interface User {
   email: string;
   role: "user" | "admin" | "moderator" | "hospital" | "donor";
   avatarUrl?: string;
+  isEmailVerified: boolean;
 }
 
 interface AuthState {
