@@ -28,6 +28,7 @@ import statsRoutes from "./routes/stats.routes";
 import settingsRoutes from "./routes/settings.routes";
 import contentRoutes from "./routes/content.routes";
 import donationRoutes from "./routes/donation.routes";
+import seedRoutes from "./routes/seed.routes";
 import { streamEvents } from "./controllers/events.controller";
 
 export function createApp(): Application {
@@ -68,6 +69,7 @@ export function createApp(): Application {
   app.use("/api/v1/settings", settingsRoutes);
   app.use("/api/v1/content", contentRoutes);
   app.use("/api/v1/donations", donationRoutes);
+  app.use("/api/v1/seed", seedRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
