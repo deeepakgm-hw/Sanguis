@@ -10,6 +10,7 @@ export interface AccessTokenPayload {
   role: UserRole;
   tokenId: string; // unique id per token, used for blacklisting
   isVerifiedRequester?: boolean;
+  email?: string;
 }
 
 declare global {
