@@ -7,7 +7,7 @@ import { Donor } from "../models/Donor";
 import { BloodRequest } from "../models/BloodRequest";
 import { recordAudit } from "../services/audit.service";
 
-/** GET /api/v1/matches — paginated list (admin sees all; donors see their own). */
+/** GET /api/v1/matches — paginated list (admin sees all; donors see their own; hospitals see theirs). */
 export const listMatches = asyncHandler(async (req: Request, res: Response) => {
   const page  = Math.max(1, Number(req.query.page)  || 1);
   const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
@@ -18,8 +18,19 @@ export const listMatches = asyncHandler(async (req: Request, res: Response) => {
   if (requestId) filter.request = requestId;
   if (donorId)   filter.donor   = donorId;
 
-  // Non-admin users only see matches linked to their own donor profile.
-  if (req.user!.role !== "admin" && req.user!.role !== "moderator") {
+  // Role-based scoping:
+  if (req.user!.role === "hospital") {
+    if (requestId) {
+      const requestDoc = await BloodRequest.findById(requestId);
+      if (requestDoc && requestDoc.hospital.toString() !== req.user!.sub) {
+        throw ApiError.forbidden("Access denied: This request does not belong to your hospital.");
+      }
+    } else {
+      // If hospital lists matches without specific request, limit to their own requests
+      const ownRequests = await BloodRequest.find({ hospital: req.user!.sub }).select("_id");
+      filter.request = { $in: ownRequests.map((r) => r._id) };
+    }
+  } else if (req.user!.role !== "admin" && req.user!.role !== "moderator") {
     const donorProfile = await Donor.findOne({ userId: req.user!.sub }).select("_id");
     if (!donorProfile) throw ApiError.forbidden("No donor profile found for this account");
     filter.donor = donorProfile._id;

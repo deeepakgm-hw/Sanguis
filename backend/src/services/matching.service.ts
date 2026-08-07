@@ -27,12 +27,19 @@ import { BloodRequest, UrgencyLevel } from "../models/BloodRequest";
 import { Donor, IDonor, BloodType } from "../models/Donor";
 import { redis } from "../config/redis";
 import { logger } from "../utils/logger";
+import { getUnavailableDonorIds } from "./eligibility.service";
 
 // ---------------------------------------------------------------------------
 // CONSTANTS
 // ---------------------------------------------------------------------------
 
 const DEFAULT_RADIUS_KM = 50;
+/**
+ * Search radius for blood bank proximity queries in the cascade routing engine.
+ * Defined as a named constant (not inline) so it can be tuned in one place.
+ * 15 km reflects urban ambulance transfer range; raise for rural deployments.
+ */
+const BANK_SEARCH_RADIUS_KM = 15;
 /**
  * Max candidates fetched from the geo layer before blood-type filtering and
  * ranking.  Bounds DB/network work per request.
@@ -337,11 +344,37 @@ export async function findMatchesForRequest(
   logger.info({ requestId, geoCandidates: geoCandidates.length, radiusKm },
     "matching: geo query complete");
 
-  // ── 5. Filter by blood-type compatibility ────────────────────────────────
+  // ── 5. Filter by blood-type compatibility (“medically eligible by type”) ─────
   const eligible = geoCandidates.filter((d) => compatibleTypes.includes(d.bloodType));
 
-  // ── 6. Compute distances + build candidate list ───────────────────────────
-  const candidates: MatchCandidate[] = eligible.map((donor) => {
+  // ── 5b. Filter out voluntarily unavailable donors ───────────────────────────────
+  // A donor can be medically eligible (past the 90-day interval) but have
+  // voluntarily marked themselves as unavailable (traveling, unwell, etc.).
+  // These are two independent signals and both must be clear for a donor
+  // to appear as a match candidate. Broadcasting to an unavailable donor
+  // wastes the exact response-time budget we're trying to protect.
+  //
+  // This is a single batch DB query — not N queries per donor.
+  let availableEligible = eligible;
+  try {
+    const unavailableIds = await getUnavailableDonorIds(eligible.map((d) => d._id));
+    if (unavailableIds.size > 0) {
+      availableEligible = eligible.filter((d) => !unavailableIds.has(d._id.toString()));
+      logger.debug(
+        { requestId, excluded: unavailableIds.size, remaining: availableEligible.length },
+        "matching: voluntary unavailability filter applied"
+      );
+    }
+  } catch (availErr) {
+    // Availability check failure must never block matching — degrade gracefully.
+    logger.warn(
+      { requestId, err: availErr instanceof Error ? availErr.message : availErr },
+      "matching: availability filter failed — proceeding with full eligible list"
+    );
+  }
+
+  // ── 6. Compute distances + build candidate list ────────────────────────────
+  const candidates: MatchCandidate[] = availableEligible.map((donor) => {
     const [dLng, dLat] = donor.location.coordinates; // GeoJSON: [lng, lat]
     return {
       donor,
@@ -354,9 +387,91 @@ export async function findMatchesForRequest(
   const ranked = rankCandidates(candidates);
 
   logger.info(
-    { requestId, eligible: ranked.length, geoCandidates: geoCandidates.length },
+    { requestId, eligible: ranked.length, geoCandidates: geoCandidates.length, voluntarilyExcluded: eligible.length - availableEligible.length },
     "matching: findMatchesForRequest complete"
   );
 
   return ranked;
+}
+
+/**
+ * Cascade Routing Engine — bank-first, donor-fallback.
+ *
+ * Step 1: Check verified blood banks within BANK_SEARCH_RADIUS_KM for stock.
+ * Step 2: If sufficient → return bank recommendation (no inventory decrement —
+ *         this is a RECOMMENDATION only; a future confirmation endpoint will
+ *         call adjustInventory with reason "dispatch_fulfilled" once the
+ *         hospital confirms the pickup actually happened).
+ * Step 3: If insufficient → fall through to donor broadcast.
+ *
+ * Fail-safe: if the bank-lookup throws for any reason (network, geo index
+ * unavailable, etc.), the error is logged and we fall straight through to
+ * donor broadcast rather than failing the entire request.  A bank-lookup
+ * failure must NEVER block the existing working donor-matching path.
+ */
+export async function routeBloodRequest(requestId: string): Promise<
+  | {
+      stage: "bank_fulfillable";
+      recommendedBanks: ReturnType<typeof Array.prototype.sort>;
+      totalAvailableUnits: number;
+    }
+  | {
+      stage: "donor_broadcast";
+      donorMatches: MatchCandidate[];
+      partialBankSupply: number;
+      shortfallUnits: number;
+    }
+> {
+  const request = await BloodRequest.findById(requestId);
+  if (!request) {
+    throw new Error(`BloodRequest not found: ${requestId}`);
+  }
+
+  // GPS coordinates in GeoJSON are [lng, lat]
+  const [reqLng, reqLat] = request.geoLocation.coordinates;
+
+  // ── Stage 1: check verified blood banks within radius ─────────────────────
+  // Dynamic import to prevent circular dependency with inventory.service
+  // (inventory.service imports haversineKm from this file).
+  let supply: { totalUnits: number; banks: any[] } = { totalUnits: 0, banks: [] };
+  try {
+    const { getRegionalSupplyIndex } = await import("./inventory.service");
+    supply = await getRegionalSupplyIndex(
+      request.bloodType,
+      reqLat,
+      reqLng,
+      BANK_SEARCH_RADIUS_KM
+    );
+  } catch (bankErr) {
+    // Fail-safe: a bank-lookup failure (geo index down, network, etc.) must
+    // never block donor broadcast.  Log loudly and fall through.
+    logger.error(
+      { requestId, err: bankErr instanceof Error ? bankErr.message : bankErr },
+      "routeBloodRequest: bank supply lookup failed — falling through to donor broadcast"
+    );
+  }
+
+  // ── Stage 2: sufficient bank supply ─────────────────────────────────────
+  if (supply.totalUnits >= request.unitsNeeded) {
+    // IMPORTANT: do NOT call adjustInventory here.  This is a recommendation
+    // only.  Auto-decrementing stock without confirmation that the transfer
+    // actually happened would create false inventory data.  The hospital
+    // must confirm pickup via a future /confirm-pickup endpoint, which will
+    // then call adjustInventory({ reason: "dispatch_fulfilled" }).
+    return {
+      stage: "bank_fulfillable",
+      // banks already sorted by distanceKm ascending inside getRegionalSupplyIndex
+      recommendedBanks: supply.banks,
+      totalAvailableUnits: supply.totalUnits,
+    };
+  }
+
+  // ── Stage 3: insufficient stock → donor broadcast ────────────────────────
+  const donorMatches = await findMatchesForRequest(requestId);
+  return {
+    stage: "donor_broadcast",
+    donorMatches,
+    partialBankSupply: supply.totalUnits,
+    shortfallUnits: request.unitsNeeded - supply.totalUnits,
+  };
 }

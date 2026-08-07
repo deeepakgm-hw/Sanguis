@@ -1,26 +1,47 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { useAuthStore } from "@/store/auth.store";
 import { ShieldCheck, Heart, Users, Activity, Sparkles, Brain, ArrowRight, BarChart2 } from "lucide-react";
+import { api } from "@/lib/api";
 
 export default function HomePage() {
   const user = useAuthStore((s) => s.user);
 
-  // AI Forecaster Simulator State
-  const [selectedRegion, setSelectedRegion] = useState("city-center");
+  // AI Forecaster — Live API State
   const [selectedBlood, setSelectedBlood] = useState("O-");
+  const [forecastData, setForecastData] = useState<any | null>(null);
+  const [forecastLoading, setForecastLoading] = useState(false);
 
-  const regionData: Record<string, { name: string; demand: number; supply: number; status: string; color: string }> = {
-    "city-center": { name: "City Central District", demand: 92, supply: 34, status: "Critical Shortage Expected", color: "text-destructive bg-destructive/10" },
-    "north-sub": { name: "North Suburbs Metro", demand: 45, supply: 62, status: "Stable Supply", color: "text-emerald-500 bg-emerald-500/10" },
-    "south-metro": { name: "South Metro Hospital Hub", demand: 78, supply: 22, status: "High Urgency Deficit", color: "text-amber-500 bg-amber-500/10" },
+  const fetchForecast = async () => {
+    setForecastLoading(true);
+    try {
+      const res = await api.get("/forecast", {
+        params: { lat: 13.0827, lng: 80.2707, radiusKm: 50, bloodType: selectedBlood },
+      });
+      setForecastData(res.data.data);
+    } catch {
+      setForecastData(null);
+    } finally {
+      setForecastLoading(false);
+    }
   };
 
-  const currentForecast = regionData[selectedRegion];
+  useEffect(() => {
+    fetchForecast();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBlood]);
+
+  // Tier colour helper
+  const tierColor = (tier: string | undefined) => {
+    if (tier === "critical") return "text-destructive bg-destructive/10 border-destructive/20";
+    if (tier === "watch") return "text-amber-500 bg-amber-500/10 border-amber-500/20";
+    if (tier === "monitoring") return "text-blue-500 bg-blue-500/10 border-blue-500/20";
+    return "text-emerald-500 bg-emerald-500/10 border-emerald-500/20";
+  };
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-background">
@@ -129,36 +150,33 @@ export default function HomePage() {
             {/* Ambient Background Glow inside the card */}
             <div className="absolute top-[-20%] right-[-20%] h-40 w-40 rounded-full bg-destructive/10 blur-2xl pointer-events-none" />
 
-            <div className="flex items-center gap-2 mb-4">
-              <div className="rounded-lg bg-destructive/15 p-2 text-destructive">
-                <Brain className="h-5 w-5" />
+            {/* Header row with LIVE badge */}
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div className="rounded-lg bg-destructive/15 p-2 text-destructive">
+                  <Brain className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm">Sanguis Predictor AI</h3>
+                  <p className="text-xs text-muted-foreground">Blood Shortage Forecaster</p>
+                </div>
               </div>
-              <div>
-                <h3 className="font-bold text-sm">Sanguis Predictor AI</h3>
-                <p className="text-xs text-muted-foreground">Blood Shortage Forecaster</p>
-              </div>
+              {/* Pulsing LIVE badge */}
+              <span className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                </span>
+                LIVE DATA
+              </span>
             </div>
 
             <div className="space-y-4">
-              {/* Region Select */}
+              {/* Blood Type Grid — all 8 types */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Region Hub</label>
-                <select
-                  value={selectedRegion}
-                  onChange={(e) => setSelectedRegion(e.target.value)}
-                  className="w-full h-9 rounded-lg border border-border bg-background/50 px-3 text-xs shadow-inner"
-                >
-                  <option value="city-center">City Central District</option>
-                  <option value="north-sub">North Suburbs Metro</option>
-                  <option value="south-metro">South Metro Hospital Hub</option>
-                </select>
-              </div>
-
-              {/* Blood Type Select */}
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Blood Type Group</label>
+                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Blood Type</label>
                 <div className="grid grid-cols-4 gap-1.5">
-                  {["A+", "O-", "B+", "AB-"].map((bt) => (
+                  {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map((bt) => (
                     <button
                       key={bt}
                       type="button"
@@ -176,49 +194,109 @@ export default function HomePage() {
               </div>
 
               {/* Output Analysis */}
-              <div className="mt-6 p-4 rounded-xl border border-border/30 bg-muted/40 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-muted-foreground">Sanguis Forecast:</span>
-                  <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${currentForecast.color}`}>
-                    {currentForecast.status}
-                  </span>
-                </div>
-
-                {/* SVG Visual Bars */}
-                <div className="space-y-2 pt-1">
-                  <div>
-                    <div className="flex justify-between text-[10px] text-muted-foreground mb-1 font-semibold">
-                      <span>PROJECTED DEMAND INDEX</span>
-                      <span>{currentForecast.demand}%</span>
+              <div className="mt-2 p-4 rounded-xl border border-border/30 bg-muted/40 space-y-3">
+                {forecastLoading ? (
+                  /* Loading skeleton */
+                  <div className="space-y-3 animate-pulse">
+                    <div className="flex justify-between">
+                      <div className="h-3 w-24 rounded bg-border/60" />
+                      <div className="h-3 w-16 rounded bg-border/60" />
                     </div>
-                    <div className="h-2 w-full rounded-full bg-border/40 overflow-hidden">
-                      <div
-                        className="h-full bg-destructive transition-all duration-500 ease-out"
-                        style={{ width: `${currentForecast.demand}%` }}
-                      />
+                    <div className="h-2 w-full rounded-full bg-border/40" />
+                    <div className="flex justify-between">
+                      <div className="h-3 w-24 rounded bg-border/60" />
+                      <div className="h-3 w-16 rounded bg-border/60" />
                     </div>
+                    <div className="h-2 w-full rounded-full bg-border/40" />
+                    <div className="h-px w-full bg-border/25" />
+                    <div className="h-3 w-40 rounded bg-border/60" />
                   </div>
+                ) : forecastData ? (
+                  <>
+                    {/* Status row */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-muted-foreground">Sanguis Forecast:</span>
+                      <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase border ${tierColor(forecastData.tier)}`}>
+                        {forecastData.tierLabel ?? "—"}
+                      </span>
+                    </div>
 
-                  <div>
-                    <div className="flex justify-between text-[10px] text-muted-foreground mb-1 font-semibold">
-                      <span>COMMUNITY SUPPLY INDEX</span>
-                      <span>{currentForecast.supply}%</span>
+                    {/* Demand / Supply bars */}
+                    <div className="space-y-2 pt-1">
+                      <div>
+                        <div className="flex justify-between text-[10px] text-muted-foreground mb-1 font-semibold">
+                          <span>PROJECTED DEMAND INDEX</span>
+                          <span>{forecastData.demandIndex ?? 0}%</span>
+                        </div>
+                        <div className="h-2 w-full rounded-full bg-border/40 overflow-hidden">
+                          <div
+                            className="h-full bg-destructive transition-all duration-500 ease-out"
+                            style={{ width: `${forecastData.demandIndex ?? 0}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between text-[10px] text-muted-foreground mb-1 font-semibold">
+                          <span>COMMUNITY SUPPLY INDEX</span>
+                          <span>{forecastData.supplyIndex ?? 0}%</span>
+                        </div>
+                        <div className="h-2 w-full rounded-full bg-border/40 overflow-hidden">
+                          <div
+                            className="h-full bg-emerald-500 transition-all duration-500 ease-out"
+                            style={{ width: `${forecastData.supplyIndex ?? 0}%` }}
+                          />
+                        </div>
+                      </div>
                     </div>
-                    <div className="h-2 w-full rounded-full bg-border/40 overflow-hidden">
-                      <div
-                        className="h-full bg-emerald-500 transition-all duration-500 ease-out"
-                        style={{ width: `${currentForecast.supply}%` }}
-                      />
+
+                    {/* Breakdown tooltip-style section */}
+                    <div className="mt-1 p-2.5 rounded-lg border border-border/20 bg-background/30 grid grid-cols-3 gap-2 text-center">
+                      <div>
+                        <p className="text-[11px] font-bold text-foreground">{forecastData.recentRequests ?? "—"}</p>
+                        <p className="text-[9px] text-muted-foreground leading-tight mt-0.5">requests<br />last 14d</p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] font-bold text-foreground">{forecastData.bankInventoryUnits ?? "—"}</p>
+                        <p className="text-[9px] text-muted-foreground leading-tight mt-0.5">units in<br />banks</p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] font-bold text-foreground">{forecastData.eligibleDonorCount ?? "—"}</p>
+                        <p className="text-[9px] text-muted-foreground leading-tight mt-0.5">eligible<br />donors</p>
+                      </div>
                     </div>
+
+                    {/* Footer: ratio + computedAt */}
+                    <div className="pt-2 border-t border-border/25 flex items-center justify-between text-[10px] text-muted-foreground">
+                      <span>
+                        Computed at:{" "}
+                        <span className="font-semibold text-foreground">
+                          {forecastData.computedAt
+                            ? new Date(forecastData.computedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                            : "—"}
+                        </span>
+                        {" ·"} ratio{" "}
+                        <span className="font-semibold text-foreground">{forecastData.ratio ?? "—"}</span>
+                      </span>
+                      <span className="flex items-center gap-1 font-semibold text-destructive">
+                        <Sparkles className="h-3 w-3" /> AI Forecast
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  /* Fallback — API unavailable */
+                  <div className="text-center py-4 space-y-1">
+                    <p className="text-xs font-semibold text-muted-foreground">Forecast unavailable</p>
+                    <p className="text-[10px] text-muted-foreground">Could not reach the forecast service.</p>
+                    <button
+                      type="button"
+                      onClick={fetchForecast}
+                      className="mt-2 text-[10px] font-semibold text-destructive hover:underline"
+                    >
+                      Retry
+                    </button>
                   </div>
-                </div>
-
-                <div className="pt-2 border-t border-border/25 flex items-center justify-between text-[10px] text-muted-foreground">
-                  <span>Confidence rating: 97.4%</span>
-                  <span className="flex items-center gap-1 font-semibold text-destructive">
-                    <Sparkles className="h-3 w-3" /> Auto-optimising dispatches
-                  </span>
-                </div>
+                )}
               </div>
             </div>
           </div>

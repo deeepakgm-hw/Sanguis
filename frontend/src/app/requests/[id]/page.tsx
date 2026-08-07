@@ -20,9 +20,14 @@ import {
   Activity, 
   Radio, 
   Truck,
-  Sparkles
+  Sparkles,
+  Globe,
+  MessageSquare,
+  Building,
+  CheckCircle
 } from "lucide-react";
 import Link from "next/link";
+import { MapView, MapMarker } from "@/components/widgets/map-view";
 
 interface BloodRequestDetail {
   _id: string;
@@ -74,9 +79,24 @@ export default function BloodRequestDetailPage({ params }: { params: { id: strin
 
   const [request, setRequest] = useState<BloodRequestDetail | null>(null);
   const [matches, setMatches] = useState<MatchDetail[]>([]);
+  const [routeResult, setRouteResult] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  // Load routing result from sessionStorage if available
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const stored = sessionStorage.getItem(`sanguis_route_result_${params.id}`);
+      if (stored) {
+        try {
+          setRouteResult(JSON.parse(stored));
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    }
+  }, [params.id]);
 
   // Authenticated route guard
   useEffect(() => {
@@ -141,6 +161,29 @@ export default function BloodRequestDetailPage({ params }: { params: { id: strin
   };
 
   const currentUrgency = urgencyTiers[request.urgencyLevel] || urgencyTiers.medium;
+
+  // Convert recommended blood banks into markers
+  const bankMarkers = (routeResult?.recommendedBanks || []).map((b: any) => ({
+    id: b.bank?._id || Math.random().toString(),
+    lat: b.bank?.location?.coordinates[1] || request.geoLocation.coordinates[1],
+    lng: b.bank?.location?.coordinates[0] || request.geoLocation.coordinates[0],
+    layerType: "bank" as "bank" | "hospital" | "donor" | "dispatch",
+    label: `Recommended Repository: ${b.bank?.name || "Blood Bank"}`,
+    sublabel: `Units Available: ${b.availableUnits} · Distance: ${b.distanceKm?.toFixed(1) || 0}km`,
+  }));
+
+  // Convert matches into map markers
+  const mapMarkers: MapMarker[] = [
+    ...matches.map((m) => ({
+      id: m._id,
+      lat: m.donor.location.coordinates[1],
+      lng: m.donor.location.coordinates[0],
+      layerType: m.status === "accepted" ? "hospital" : (m.status === "declined" ? "donor" : "dispatch"),
+      label: `Donor (${m.donor.bloodType})`,
+      sublabel: `Status: ${m.status} · Trust Score: ${m.donor.trustScore}%`,
+    })),
+    ...bankMarkers
+  ];
 
   return (
     <main className="relative mx-auto max-w-5xl px-6 py-12 min-h-screen bg-background">
@@ -214,6 +257,25 @@ export default function BloodRequestDetailPage({ params }: { params: { id: strin
                   {request.geoLocation.coordinates[1].toFixed(4)}, {request.geoLocation.coordinates[0].toFixed(4)}
                 </span>
               </div>
+
+              {/* SMS Fallback status & Cross Referral */}
+              <div className="pt-3 border-t border-border/20 space-y-2">
+                <div>
+                  <span className="text-[10px] text-muted-foreground block font-bold uppercase">SMS Fallback Outreach</span>
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded mt-0.5 border border-emerald-500/20">
+                    <MessageSquare className="h-3 w-3" /> Attempted (Simulated active)
+                  </span>
+                </div>
+
+                {(request.urgencyLevel === "critical" || request.urgencyLevel === "high") && (
+                  <div>
+                    <span className="text-[10px] text-muted-foreground block font-bold uppercase">Cross-Institution Referral</span>
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-destructive bg-destructive/10 px-1.5 py-0.5 rounded mt-0.5 border border-destructive/20 animate-pulse">
+                      <Globe className="h-3 w-3" /> Active (Regional pool escalated)
+                    </span>
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -221,6 +283,80 @@ export default function BloodRequestDetailPage({ params }: { params: { id: strin
         {/* RIGHT COLUMN: Live Interactive Radar Sweep Map & Matches Feed */}
         <div className="md:col-span-8 space-y-6">
           
+          {/* Cascade Routing Details Card */}
+          {(() => {
+            const isFulfillable = routeResult?.stage === "bank_fulfillable" || (routeResult === null && matches.length === 0 && request.status === "fulfilled");
+            const isBroadcast = routeResult?.stage === "donor_broadcast" || (routeResult === null && matches.length > 0);
+
+            if (isFulfillable) {
+              return (
+                <Card className="border border-emerald-500/30 bg-emerald-500/5 glow-border overflow-hidden">
+                  <CardHeader className="pb-2 flex flex-row items-center gap-3">
+                    <div className="h-9 w-9 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
+                      <Building className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base font-bold text-emerald-500">Cascade Routing: Resolved via Blood Banks</CardTitle>
+                      <CardDescription className="text-xs text-muted-foreground mt-0.5">Available inventory was found in nearest verified repositories. Bypass donor matches.</CardDescription>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-2 text-xs space-y-3">
+                    <p className="text-muted-foreground leading-relaxed">
+                      Sanguis routing cascade verified sufficient stock. Dispatching institution can pick up units directly from the recommended locations listed below.
+                    </p>
+                    <div className="space-y-2 mt-2">
+                      {(routeResult?.recommendedBanks || []).map((b: any, idx: number) => (
+                        <div key={idx} className="flex justify-between items-center p-2.5 rounded-lg border border-emerald-500/20 bg-emerald-500/5">
+                          <div>
+                            <p className="font-bold text-foreground">{b.bank?.name || "Blood Bank"}</p>
+                            <p className="text-[10px] text-muted-foreground">{b.bank?.address || "Address unavailable"}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-extrabold text-emerald-500">{b.availableUnits} units available</p>
+                            <p className="text-[10px] text-muted-foreground">Proximity: {b.distanceKm?.toFixed(1) || 0}km</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            }
+
+            if (isBroadcast) {
+              return (
+                <Card className="border border-destructive/20 bg-destructive/5 glow-border overflow-hidden">
+                  <CardHeader className="pb-2 flex flex-row items-center gap-3">
+                    <div className="h-9 w-9 rounded-xl bg-destructive/10 text-destructive flex items-center justify-center">
+                      <Radio className="h-5 w-5 animate-pulse" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base font-bold text-destructive">Cascade Routing: Fallback to Donor Broadcast</CardTitle>
+                      <CardDescription className="text-xs text-muted-foreground mt-0.5">Insufficient supply in verified blood banks. Live matching sequence triggered.</CardDescription>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-2 text-xs space-y-2">
+                    <p className="text-muted-foreground leading-relaxed">
+                      Sanguis routing cascade checked regional repositories but identified a shortfall of units. Triggered live broadcast and SMS outreach to volunteer donor network.
+                    </p>
+                    <div className="grid grid-cols-2 gap-4 mt-2 p-2.5 rounded-lg border border-border/30 bg-muted/20 text-center">
+                      <div>
+                        <p className="text-sm font-bold text-foreground">{routeResult?.shortfallUnits || request.unitsNeeded}</p>
+                        <p className="text-[10px] text-muted-foreground">Shortfall Units (Required)</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-foreground">{routeResult?.partialBankSupply || 0}</p>
+                        <p className="text-[10px] text-muted-foreground">Partial Bank Stock Found</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            }
+
+            return null;
+          })()}
+
           {/* Radar Sweep Map */}
           <Card className="overflow-hidden glass-card border border-border/40 bg-card/40">
             <CardHeader className="bg-muted/30 pb-3 border-b border-border/30">
@@ -233,63 +369,13 @@ export default function BloodRequestDetailPage({ params }: { params: { id: strin
                 </span>
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-0 h-64 bg-background/25 relative overflow-hidden flex items-center justify-center">
-              
-              {/* Concentric Radar Rings */}
-              <div className="absolute h-56 w-56 rounded-full border border-destructive/10 flex items-center justify-center">
-                <div className="absolute h-40 w-40 rounded-full border border-destructive/10 flex items-center justify-center">
-                  <div className="absolute h-24 w-24 rounded-full border border-destructive/10 flex items-center justify-center">
-                    <div className="absolute h-2 w-2 rounded-full bg-destructive animate-ping" />
-                  </div>
-                </div>
-              </div>
-
-              {/* Sweeping Radar Line (CSS Animation wrapper) */}
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="h-[200px] w-[200px] rounded-full relative animate-[spin_6s_linear_infinite]" style={{ background: "conic-gradient(from 0deg, rgba(239, 68, 68, 0.15) 0deg, transparent 90deg)" }}>
-                  <div className="absolute top-0 left-1/2 -translate-x-1/2 h-1/2 w-0.5 bg-destructive/30" />
-                </div>
-              </div>
-
-              {/* Floating Match Nodes (SVG/HTML representation based on match coordinates relative to center) */}
-              {matches.map((m, idx) => {
-                const colors = {
-                  pending: "bg-amber-500 shadow-amber-500/50",
-                  accepted: "bg-emerald-500 shadow-emerald-500/50",
-                  declined: "bg-destructive shadow-destructive/50",
-                  expired: "bg-muted shadow-muted/50",
-                };
-                
-                // Deterministic offsets for radar grid nodes
-                const offsets = [
-                  { top: "30%", left: "40%" },
-                  { top: "60%", left: "70%" },
-                  { top: "25%", left: "65%" },
-                  { top: "70%", left: "30%" },
-                ];
-                const pos = offsets[idx % offsets.length];
-
-                return (
-                  <div
-                    key={m._id}
-                    className={`absolute h-3.5 w-3.5 rounded-full border-2 border-background animate-pulse cursor-pointer shadow-lg transition-all hover:scale-125 ${colors[m.status]}`}
-                    style={pos}
-                    title={`Donor ${m.donor._id.slice(-4).toUpperCase()} (Type: ${m.donor.bloodType})`}
-                  />
-                );
-              })}
-
-              {/* Hospital Center Marker */}
-              <div className="absolute z-10 flex flex-col items-center justify-center bg-destructive/20 border border-destructive/40 text-destructive h-9 w-9 rounded-xl shadow-lg">
-                <Activity className="h-5.5 w-5.5 animate-pulse" />
-              </div>
-
-              {/* Radar Legend overlay */}
-              <div className="absolute bottom-3 left-4 flex gap-4 text-[9px] font-bold text-muted-foreground bg-background/85 px-3 py-1 rounded-lg border border-border/40 shadow">
-                <div className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Accepted</div>
-                <div className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-500" /> Pending</div>
-                <div className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-destructive" /> Declined</div>
-              </div>
+            <CardContent className="p-0 h-64 relative overflow-hidden">
+              <MapView 
+                markers={mapMarkers} 
+                centerLat={request.geoLocation.coordinates[1]} 
+                centerLng={request.geoLocation.coordinates[0]} 
+                radiusKm={15} 
+              />
             </CardContent>
           </Card>
 

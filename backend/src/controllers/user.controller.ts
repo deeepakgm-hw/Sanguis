@@ -78,3 +78,14 @@ export const changeUserRole = asyncHandler(async (req: Request, res: Response) =
   await recordAudit({ req, action: "user.role_change", resourceType: "User", resourceId: req.params.id, after: { role } });
   return ApiResponse.success(res, user.toSafeJSON(), "Role updated");
 });
+
+/** Admin-only: toggle verified requester status (isEmailVerified). */
+export const verifyUser = asyncHandler(async (req: Request, res: Response) => {
+  const { isEmailVerified } = req.body as { isEmailVerified: boolean };
+  
+  const user = await User.findByIdAndUpdate(req.params.id, { isEmailVerified }, { new: true });
+  if (!user) throw ApiError.notFound("User not found");
+
+  await recordAudit({ req, action: "user.verification_change", resourceType: "User", resourceId: req.params.id, after: { isEmailVerified } });
+  return ApiResponse.success(res, user.toSafeJSON(), "User verification status updated");
+});

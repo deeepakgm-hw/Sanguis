@@ -4,8 +4,9 @@ import { ApiResponse } from "../utils/ApiResponse";
 import { ApiError } from "../utils/ApiError";
 import { BloodRequest } from "../models/BloodRequest";
 import { recordAudit } from "../services/audit.service";
-import { findMatchesForRequest } from "../services/matching.service";
+import { routeBloodRequest } from "../services/matching.service";
 import { Match } from "../models/Match";
+import { logger } from "../utils/logger";
 
 /** GET /api/v1/blood-requests — paginated list. */
 export const listBloodRequests = asyncHandler(async (req: Request, res: Response) => {
@@ -64,26 +65,35 @@ export const createBloodRequest = asyncHandler(async (req: Request, res: Respons
     after: request.toObject(),
   });
 
-  // Run matching engine — returns ranked candidates; create Match docs here.
+  // Run Cascade Routing (Part 2)
+  let routeResult = null;
   let matchCount = 0;
   try {
-    const candidates = await findMatchesForRequest(request._id.toString());
-    const matchDocs = candidates.map((c) => ({
-      request: request._id,
-      donor: c.donor._id,
-    }));
-    if (matchDocs.length) {
-      // insertMany with ordered:false skips duplicate-key errors silently.
-      await Match.insertMany(matchDocs, { ordered: false });
-      matchCount = matchDocs.length;
+    const result = await routeBloodRequest(request._id.toString());
+    routeResult = result;
+
+    if (result.stage === "donor_broadcast") {
+      const matchDocs = result.donorMatches.map((c) => ({
+        request: request._id,
+        donor: c.donor._id,
+      }));
+      if (matchDocs.length) {
+        // insertMany with ordered:false skips duplicate-key errors silently.
+        await Match.insertMany(matchDocs, { ordered: false });
+        matchCount = matchDocs.length;
+      }
     }
   } catch (err) {
-    // Matching failure must never break the request-creation response.
-    // Log and continue — the operator can trigger a re-match later.
-    console.error("[createBloodRequest] matching engine error:", err);
+    // Cascade routing failure must never break the request-creation response.
+    // Log and continue — the operator can trigger a re-route/re-match later.
+    logger.error({ err }, "[createBloodRequest] cascade routing engine error");
   }
 
-  return ApiResponse.created(res, { request, matchCount }, "Blood request created");
+  return ApiResponse.created(
+    res,
+    { request, matchCount, routeResult },
+    "Blood request created"
+  );
 });
 
 /** PATCH /api/v1/blood-requests/:id — update own request (hospital only). */

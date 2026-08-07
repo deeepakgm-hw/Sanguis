@@ -111,7 +111,7 @@ export default function DashboardPage() {
                 <Activity className="h-5.5 w-5.5" />
               </div>
               <div>
-                <h3 className="font-extrabold text-lg">Hospital Request panel</h3>
+                <h3 className="font-extrabold text-lg">Hospital Request Panel</h3>
                 <p className="text-xs text-muted-foreground leading-relaxed mt-1">
                   Create emergency requests with real-time AI Urgency analyzers, dispatch matched donor networks, and monitor donor ETAs on the command map.
                 </p>
@@ -123,6 +123,57 @@ export default function DashboardPage() {
               </Button>
             </Link>
           </div>
+
+          {/* Blood Bank Entrance */}
+          <div className="glass-card glow-border p-6 rounded-2xl border border-border/40 hover:translate-y-[-2px] transition-all duration-300 flex flex-col justify-between space-y-6 bg-card/30 md:col-span-2">
+            <div className="flex flex-col md:flex-row gap-6 justify-between items-start md:items-center">
+              <div className="space-y-3">
+                <div className="h-10 w-10 rounded-xl bg-destructive/15 text-destructive flex items-center justify-center">
+                  <ShieldCheck className="h-5.5 w-5.5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-lg">Blood Bank Owner Portal</h3>
+                  <p className="text-xs text-muted-foreground leading-relaxed mt-1 max-w-xl">
+                    Register your repository, manage real-time inventory parameters, adjust stock levels via audit ledgers, and track incoming verification dispatches.
+                  </p>
+                </div>
+              </div>
+              <Link href="/bloodbank" className="w-full md:w-auto">
+                <Button className="w-full md:w-auto font-bold shadow-lg bg-destructive hover:bg-destructive/90 text-white flex items-center justify-center gap-2 px-6">
+                  Manage Repository <ArrowRight className="h-4 w-4" />
+                </Button>
+              </Link>
+            </div>
+          </div>
+
+          {/* Admin Command Center Entrance */}
+          {(user.role === "admin" || user.role === "moderator") && (
+            <div className="glass-card border border-destructive/40 hover:translate-y-[-2px] transition-all duration-300 p-6 rounded-2xl flex flex-col md:flex-row gap-6 justify-between items-start md:items-center bg-destructive/5 md:col-span-2 shadow-lg shadow-destructive/5">
+              <div className="space-y-3">
+                <div className="h-10 w-10 rounded-xl bg-destructive/15 text-destructive flex items-center justify-center">
+                  <Activity className="h-5.5 w-5.5 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-lg text-destructive font-bold">Tactical Command Center</h3>
+                  <p className="text-xs text-muted-foreground leading-relaxed mt-1 max-w-xl">
+                    Unified tactical oversight: monitor live geographic dispatch radar maps, verified blood bank stocks, active donor lists, and verified hospital status. Manage the explainable emergency priority queue.
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto shrink-0">
+                <Link href="/command-center" className="w-full sm:w-auto">
+                  <Button className="w-full sm:w-auto font-bold bg-destructive hover:bg-destructive/90 text-white flex items-center justify-center gap-2 px-5">
+                    Tactical Map <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </Link>
+                <Link href="/command-center/priority-queue" className="w-full sm:w-auto">
+                  <Button variant="outline" className="w-full sm:w-auto font-bold glass flex items-center justify-center gap-2 px-5">
+                    Priority Queue <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          )}
 
         </div>
 

@@ -4,6 +4,7 @@ import { requireRole, requireOwnership } from "../middlewares/rbac";
 import { validate } from "../middlewares/validate";
 import { requireVerifiedRequester } from "../middlewares/verifiedRequester";
 import * as bloodRequestController from "../controllers/bloodRequest.controller";
+import { getPriorityQueue } from "../controllers/priorityQueue.controller";
 import { BloodRequest } from "../models/BloodRequest";
 import {
   createBloodRequestSchema,
@@ -12,6 +13,14 @@ import {
 } from "../validators/bloodRequest.validator";
 
 const router = Router();
+
+/** GET /api/v1/blood-requests/priority-queue — admin/moderator dispatcher view. */
+router.get(
+  "/priority-queue",
+  requireAuth,
+  requireRole("admin", "moderator"),
+  getPriorityQueue
+);
 
 /** List blood requests — authenticated. */
 router.get(

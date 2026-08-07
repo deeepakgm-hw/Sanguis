@@ -15,7 +15,8 @@ import {
   MapPin, 
   AlertTriangle, 
   CheckCircle,
-  HelpCircle
+  HelpCircle,
+  ShieldAlert
 } from "lucide-react";
 import Link from "next/link";
 
@@ -44,31 +45,26 @@ export default function NewBloodRequestPage() {
     return <div className="flex min-h-screen items-center justify-center text-muted-foreground bg-background">Loading…</div>;
   }
 
-  // Reactive AI Urgency Priority computations
-  let aiUrgencyIndex = 30; // base value
-  let shortageRisk = "Low Deficit Threat";
-  let riskColor = "text-emerald-500 bg-emerald-500/10 border-emerald-500/20";
-  let recommendations = "Standard donor proximity dispatch recommended.";
+  const [forecast, setForecast] = useState<any | null>(null);
+  const [forecastLoading, setForecastLoading] = useState(false);
 
-  if (urgencyLevel === "high") aiUrgencyIndex += 30;
-  if (urgencyLevel === "critical") aiUrgencyIndex += 50;
-
-  if (unitsNeeded >= 5) {
-    aiUrgencyIndex += 20;
-    shortageRisk = "High Volume Deficiency";
-    riskColor = "text-amber-500 bg-amber-500/10 border-amber-500/20";
-  }
-
-  if (bloodType === "O-" || bloodType === "O+") {
-    aiUrgencyIndex += 15;
-    if (urgencyLevel === "critical" || unitsNeeded >= 5) {
-      shortageRisk = "Critical Supply Deficit (O Group)";
-      riskColor = "text-destructive bg-destructive/10 border-destructive/20";
-      recommendations = "IMMEDIATE broadcast to all universal donors required.";
-    }
-  }
-
-  if (aiUrgencyIndex > 100) aiUrgencyIndex = 100;
+  useEffect(() => {
+    if (!user) return;
+    const fetchForecast = async () => {
+      setForecastLoading(true);
+      try {
+        const res = await api.get("/forecast", {
+          params: { lat: parseFloat(lat) || 13.0827, lng: parseFloat(lng) || 80.2707, radiusKm: 50, bloodType },
+        });
+        setForecast(res.data.data);
+      } catch {
+        setForecast(null);
+      } finally {
+        setForecastLoading(false);
+      }
+    };
+    fetchForecast();
+  }, [bloodType, lat, lng, user]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -97,7 +93,11 @@ export default function NewBloodRequestPage() {
 
       setSuccess(true);
       const requestId = response.data?.data?.request?._id;
+      const routeResult = response.data?.data?.routeResult;
       if (requestId) {
+        if (routeResult) {
+          sessionStorage.setItem(`sanguis_route_result_${requestId}`, JSON.stringify(routeResult));
+        }
         router.push(`/requests/${requestId}`);
       } else {
         router.push("/dashboard");
@@ -112,29 +112,45 @@ export default function NewBloodRequestPage() {
     }
   }
 
-  return (
-    <main className="relative mx-auto max-w-5xl px-6 py-12 min-h-screen bg-background">
-      {/* Background radial highlight */}
-      <div className="absolute top-[-10%] right-[-10%] h-[300px] w-[300px] rounded-full bg-destructive/5 blur-[100px] pointer-events-none" />
+      const isUnverifiedHospital = user && user.role === "hospital" && !user.isEmailVerified;
 
-      {/* Header */}
-      <div className="mb-8 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <img src="/logo.jpg" alt="Sanguis Logo" className="h-9 w-9 rounded-xl object-cover shadow-md" />
-          <div>
-            <h1 className="text-xl font-bold tracking-tight text-glow">Emergency Request panel</h1>
-            <p className="text-xs text-muted-foreground">Submit blood match dispatches to regional volunteer network</p>
+      return (
+        <main className="relative mx-auto max-w-5xl px-6 py-12 min-h-screen bg-background">
+          {/* Background radial highlight */}
+          <div className="absolute top-[-10%] right-[-10%] h-[300px] w-[300px] rounded-full bg-destructive/5 blur-[100px] pointer-events-none" />
+    
+          {/* Header */}
+          <div className="mb-8 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <img src="/logo.jpg" alt="Sanguis Logo" className="h-9 w-9 rounded-xl object-cover shadow-md" />
+              <div>
+                <h1 className="text-xl font-bold tracking-tight text-glow">Emergency Request panel</h1>
+                <p className="text-xs text-muted-foreground">Submit blood match dispatches to regional volunteer network</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <ThemeToggle />
+              <Link href="/dashboard">
+                <Button variant="outline" size="sm" className="font-semibold glass hover:bg-muted">Gateway</Button>
+              </Link>
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-4">
-          <ThemeToggle />
-          <Link href="/dashboard">
-            <Button variant="outline" size="sm" className="font-semibold glass hover:bg-muted">Gateway</Button>
-          </Link>
-        </div>
-      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+          {/* Verification Warning Card */}
+          {isUnverifiedHospital && (
+            <div className="p-4 bg-destructive/10 border border-destructive/30 rounded-xl space-y-2 mb-6">
+              <h3 className="text-sm font-extrabold text-destructive flex items-center gap-2">
+                <ShieldAlert className="h-4.5 w-4.5" /> Account Verification Pending
+              </h3>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Your hospital account has not yet been marked as a Verified Requester by Sanguis Administrators. 
+                Emergency blood request dispatches are restricted to verified medical institutions to prevent fraudulent alerts. 
+                <strong> Please contact system administration to verify your credentials.</strong>
+              </p>
+            </div>
+          )}
+    
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
         
         {/* LEFT: Dispatch Form */}
         <div className="md:col-span-7">
@@ -235,64 +251,93 @@ export default function NewBloodRequestPage() {
                   </div>
                 </div>
 
-                <Button type="submit" disabled={loading} className="w-full mt-4 bg-destructive hover:bg-destructive/90 text-white font-semibold shadow-lg">
-                  {loading ? "Calculating matches..." : "Broadcast Request & Dispatch"}
-                </Button>
-              </form>
+                 <Button 
+                   type="submit" 
+                   disabled={loading || isUnverifiedHospital} 
+                   className="w-full mt-4 bg-destructive hover:bg-destructive/90 text-white font-semibold shadow-lg disabled:opacity-50"
+                 >
+                   {loading 
+                     ? "Calculating matches..." 
+                     : isUnverifiedHospital 
+                       ? "Submission Disabled (Verification Required)" 
+                       : "Broadcast Request & Dispatch"
+                   }
+                 </Button>
+               </form>
             </CardContent>
           </Card>
         </div>
 
-        {/* RIGHT: Reactive AI Urgency Analyzer */}
+        {/* RIGHT: Live Cascade Pre-Flight Analysis */}
         <div className="md:col-span-5 space-y-6">
           <Card className="glass-card border border-border/40 relative overflow-hidden bg-card/40">
             <div className="absolute top-[-10px] right-[-10px] h-20 w-20 rounded-full bg-destructive/15 blur-xl pointer-events-none" />
             
             <CardHeader className="pb-3 border-b border-border/20">
               <div className="flex items-center gap-2">
-                <Brain className="h-5 w-5 text-destructive" />
-                <CardTitle className="text-sm font-bold">Emergency AI Priority Analyzer</CardTitle>
+                <Brain className="h-5 w-5 text-destructive animate-pulse" />
+                <CardTitle className="text-sm font-bold">Cascade Pre-Flight Analyzer</CardTitle>
               </div>
-              <CardDescription className="text-xs text-muted-foreground">Reactive threat score analysis of input parameters</CardDescription>
+              <CardDescription className="text-xs text-muted-foreground">Real-time availability audit for {bloodType} group</CardDescription>
             </CardHeader>
 
             <CardContent className="pt-6 space-y-5 text-xs">
-              {/* Urgency Progress Bar */}
-              <div className="space-y-1.5">
-                <div className="flex justify-between font-semibold">
-                  <span>AI URGENCY COMPLIANCE INDEX</span>
-                  <span className="text-destructive font-extrabold">{aiUrgencyIndex}/100</span>
-                </div>
-                <div className="h-2 w-full rounded-full bg-border/40 overflow-hidden">
-                  <div
-                    className="h-full bg-destructive transition-all duration-300 ease-out"
-                    style={{ width: `${aiUrgencyIndex}%` }}
-                  />
-                </div>
-              </div>
+              {forecastLoading ? (
+                <div className="text-center py-6 text-[11px] text-muted-foreground animate-pulse">Checking regional inventories...</div>
+              ) : forecast ? (
+                <>
+                  {/* Status Flag */}
+                  <div className={`p-3 rounded-lg border flex items-start gap-2 ${
+                    forecast.tier === "critical" 
+                      ? "text-destructive bg-destructive/10 border-destructive/20"
+                      : forecast.tier === "watch"
+                        ? "text-amber-500 bg-amber-500/10 border-amber-500/20"
+                        : "text-emerald-500 bg-emerald-500/10 border-emerald-500/20"
+                  }`}>
+                    <AlertTriangle className="h-4.5 w-4.5 shrink-0 mt-0.5" />
+                    <div>
+                      <h5 className="font-extrabold uppercase text-[10px]">Shortage risk tier:</h5>
+                      <p className="mt-0.5 font-bold">{forecast.tierLabel}</p>
+                    </div>
+                  </div>
 
-              {/* Status Flag */}
-              <div className={`p-3 rounded-lg border flex items-start gap-2 ${riskColor}`}>
-                <AlertTriangle className="h-4.5 w-4.5 shrink-0 mt-0.5" />
-                <div>
-                  <h5 className="font-extrabold">Risk Condition:</h5>
-                  <p className="mt-0.5 text-muted-foreground">{shortageRisk}</p>
-                </div>
-              </div>
+                  {/* Supply Stats */}
+                  <div className="grid grid-cols-2 gap-3 text-center">
+                    <div className="p-2.5 rounded-lg border border-border/20 bg-background/20">
+                      <p className="text-base font-black text-foreground">{forecast.bankInventoryUnits}</p>
+                      <p className="text-[9px] text-muted-foreground uppercase font-bold mt-0.5">Bank Stock</p>
+                    </div>
+                    <div className="p-2.5 rounded-lg border border-border/20 bg-background/20">
+                      <p className="text-base font-black text-foreground">{forecast.eligibleDonorCount}</p>
+                      <p className="text-[9px] text-muted-foreground uppercase font-bold mt-0.5">Active Donors</p>
+                    </div>
+                  </div>
 
-              {/* Recommendations */}
-              <div className="space-y-1.5">
-                <h5 className="font-bold text-muted-foreground uppercase tracking-wider text-[10px]">AI Proximity Recommendation</h5>
-                <p className="text-muted-foreground leading-relaxed">
-                  {recommendations} The system calculates compatibilities (ABO/Rh compatibility engine) and will rank results based on donor trust rating metrics.
-                </p>
-              </div>
+                  {/* Cascade routing projection */}
+                  <div className="space-y-1.5 pt-2 border-t border-border/20">
+                    <h5 className="font-bold text-muted-foreground uppercase tracking-wider text-[10px]">Routing Projection</h5>
+                    <p className="text-muted-foreground leading-relaxed">
+                      {forecast.bankInventoryUnits >= unitsNeeded ? (
+                        <span className="text-emerald-500 font-medium">
+                          ✓ Sufficient bank stock found. Request will resolve immediately from verified repository inventory without contacting individual donors.
+                        </span>
+                      ) : (
+                        <span className="text-amber-500 font-medium">
+                          ⚠ Deficit of {unitsNeeded - forecast.bankInventoryUnits} units. System will automatically fallback to volunteer donor broadcast and SMS outreach.
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-6 text-[11px] text-muted-foreground">Enter coordinates to enable cascade projections.</div>
+              )}
 
               <div className="pt-3 border-t border-border/20 flex items-center justify-between text-[10px] text-muted-foreground">
                 <span className="flex items-center gap-1 font-semibold text-destructive">
-                  <Sparkles className="h-3 w-3 animate-pulse" /> Verified Requester active
+                  <Sparkles className="h-3 w-3" /> Real-time forecasting
                 </span>
-                <span>Matches auto-created</span>
+                <span>Radius: 50 KM</span>
               </div>
             </CardContent>
           </Card>
@@ -301,7 +346,7 @@ export default function NewBloodRequestPage() {
           <div className="rounded-xl border border-border/30 bg-muted/30 p-4 text-xs text-muted-foreground flex items-start gap-2.5">
             <HelpCircle className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
             <div>
-              <span className="font-bold text-foreground">Gated creation:</span> This route is gated behind verified hospital checking middleware. While Teammate C completes integration parameters, it utilizes a passthrough stub.
+              <span className="font-bold text-foreground">Gated creation:</span> This route is restricted to verified requester accounts. Verify your status inside the Tactical Command Center to grant instant access.
             </div>
           </div>
         </div>

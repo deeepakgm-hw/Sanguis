@@ -25,7 +25,9 @@ import {
   Clock, 
   HelpCircle,
   TrendingUp,
-  Sparkles
+  Sparkles,
+  Radio,
+  AlertTriangle
 } from "lucide-react";
 import Link from "next/link";
 
@@ -73,6 +75,19 @@ export default function DonorDashboardPage() {
   const [formLastDonation, setFormLastDonation] = useState("");
   const [formSubmitting, setFormSubmitting] = useState(false);
 
+  // Availability calendar state
+  const [availability, setAvailability] = useState<{
+    medical: { isMedicallyEligible: boolean; nextEligibleDate: string | null; daysUntilEligible: number };
+    voluntary: { isVoluntarilyAvailable: boolean; activePeriod?: { from: string; to: string; reason?: string } };
+    unavailablePeriods: Array<{ _id: string; from: string; to: string; reason?: string }>;
+    isReadyToMatch: boolean;
+  } | null>(null);
+  const [calMonth, setCalMonth] = useState(() => new Date());
+  const [newPeriodFrom, setNewPeriodFrom] = useState("");
+  const [newPeriodTo, setNewPeriodTo] = useState("");
+  const [newPeriodReason, setNewPeriodReason] = useState("");
+  const [periodSubmitting, setPeriodSubmitting] = useState(false);
+
   // Authenticate Gate
   useEffect(() => {
     if (!isBootstrapping && !user) router.replace("/login");
@@ -88,6 +103,10 @@ export default function DonorDashboardPage() {
       setDonorProfile(profileRes.data.data);
       setMatches(matchesRes.data.data || []);
       setError("");
+      try {
+        const availRes = await api.get("/donors/me/availability");
+        setAvailability(availRes.data.data);
+      } catch (availErr) { /* donor might not have profile yet */ }
     } catch (err: any) {
       if (err.response?.status === 404) {
         setError("PROFILE_NOT_FOUND");
@@ -123,6 +142,34 @@ export default function DonorDashboardPage() {
       setRefreshTrigger((prev) => prev + 1);
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Failed to submit response");
+    }
+  }
+
+  async function handleAddPeriod(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newPeriodFrom || !newPeriodTo) { toast.error("Both dates are required"); return; }
+    setPeriodSubmitting(true);
+    try {
+      await api.post("/donors/me/availability", {
+        from: new Date(newPeriodFrom).toISOString(),
+        to: new Date(newPeriodTo).toISOString(),
+        reason: newPeriodReason || undefined,
+      });
+      toast.success("Unavailability period added");
+      setNewPeriodFrom(""); setNewPeriodTo(""); setNewPeriodReason("");
+      setRefreshTrigger(p => p + 1);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Failed to add period");
+    } finally { setPeriodSubmitting(false); }
+  }
+
+  async function handleDeletePeriod(periodId: string) {
+    try {
+      await api.delete(`/donors/me/availability/${periodId}`);
+      toast.success("Period removed");
+      setRefreshTrigger(p => p + 1);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Failed to remove period");
     }
   }
 
@@ -308,7 +355,8 @@ export default function DonorDashboardPage() {
       {loading ? (
         <div className="text-center py-20 text-muted-foreground">Loading donor profile stats...</div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           
           {/* LEFT: Digital Donor Passport Badge Card */}
           <div className="md:col-span-1 space-y-6">
@@ -369,6 +417,38 @@ export default function DonorDashboardPage() {
                 <div>
                   <h4 className="font-extrabold text-sm text-glow">{cooldownText}</h4>
                   <p className="text-xs text-muted-foreground mt-0.5">{cooldownSub}</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Live Notification Center (Proactive Outreach) */}
+            <Card className="glass-card border border-border/40 bg-card/40">
+              <CardHeader className="pb-2 border-b border-border/20">
+                <CardTitle className="text-xs font-bold flex items-center gap-1.5">
+                  <Radio className="h-4 w-4 text-destructive animate-pulse" /> Notification Center
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-4 space-y-3.5 text-xs">
+                {/* 1. Proactive Outreach Reminder */}
+                <div className="flex gap-2.5 items-start p-2.5 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
+                  <Sparkles className="h-4.5 w-4.5 text-emerald-500 shrink-0 mt-0.5" />
+                  <div className="space-y-0.5">
+                    <p className="font-bold text-emerald-500 text-[10px] uppercase tracking-wider">Proactive Outreach</p>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      Hey {user.name}! It has been 90 days since your last donation. You are fully eligible to save lives again! Please update your calendar to accept dispatch alerts.
+                    </p>
+                  </div>
+                </div>
+
+                {/* 2. Urgent Emergency broadcast */}
+                <div className="flex gap-2.5 items-start p-2.5 rounded-lg bg-destructive/5 border border-destructive/20">
+                  <AlertTriangle className="h-4.5 w-4.5 text-destructive shrink-0 mt-0.5 animate-bounce" />
+                  <div className="space-y-0.5">
+                    <p className="font-bold text-destructive text-[10px] uppercase tracking-wider">Urgent Dispatch Alert</p>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      Critical shortage of compatible {donorProfile?.bloodType || "O-"} units detected in your radius! Accept the incoming match dispatch in the active feed to help.
+                    </p>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -494,6 +574,141 @@ export default function DonorDashboardPage() {
           </div>
 
         </div>
+
+        {/* === AVAILABILITY CALENDAR === */}
+        {donorProfile && (
+          <Card className="border border-border/40 bg-card/30 mt-6">
+            <CardHeader className="pb-3 border-b border-border/20">
+              <CardTitle className="text-base font-bold flex items-center gap-2">
+                <Calendar className="h-5 w-5 text-destructive" />
+                Donation Availability Calendar
+              </CardTitle>
+              <CardDescription className="text-xs text-muted-foreground">
+                Medical re-eligibility is computed from your last donation date (90-day standard). Mark voluntary unavailability below.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pt-4 space-y-6">
+              {/* Medical Status Banner */}
+              {availability && (
+                <div className={`flex items-center gap-3 p-3 rounded-lg border ${
+                  availability.isReadyToMatch
+                    ? 'border-emerald-500/30 bg-emerald-500/5'
+                    : 'border-amber-500/30 bg-amber-500/5'
+                }`}>
+                  <div className={`h-3 w-3 rounded-full flex-shrink-0 ${
+                    availability.isReadyToMatch ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
+                  }`} />
+                  <div>
+                    <p className={`text-sm font-bold ${
+                      availability.isReadyToMatch ? 'text-emerald-500' : 'text-amber-500'
+                    }`}>
+                      {availability.isReadyToMatch ? 'Ready to Match' : 'Currently Unavailable for Matching'}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {availability.medical.isMedicallyEligible
+                        ? 'Medically eligible (90-day interval passed)'
+                        : `Medical eligibility in ${availability.medical.daysUntilEligible} days (${availability.medical.nextEligibleDate ? new Date(availability.medical.nextEligibleDate).toLocaleDateString() : 'N/A'})`
+                      }
+                      {!availability.voluntary.isVoluntarilyAvailable && ' · Self-marked unavailable'}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Visual Calendar */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <button onClick={() => setCalMonth(m => new Date(m.getFullYear(), m.getMonth() - 1, 1))} className="h-7 w-7 rounded border border-border flex items-center justify-center text-xs hover:bg-muted transition-colors">‹</button>
+                  <span className="text-sm font-bold">{calMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</span>
+                  <button onClick={() => setCalMonth(m => new Date(m.getFullYear(), m.getMonth() + 1, 1))} className="h-7 w-7 rounded border border-border flex items-center justify-center text-xs hover:bg-muted transition-colors">›</button>
+                </div>
+                <div className="grid grid-cols-7 gap-1 text-[9px] text-muted-foreground font-bold mb-1 text-center">
+                  {['S','M','T','W','T','F','S'].map((d, i) => <div key={i}>{d}</div>)}
+                </div>
+                <div className="grid grid-cols-7 gap-1">
+                  {(() => {
+                    const year = calMonth.getFullYear();
+                    const month = calMonth.getMonth();
+                    const firstDay = new Date(year, month, 1).getDay();
+                    const daysInMonth = new Date(year, month + 1, 0).getDate();
+                    const today = new Date();
+                    const nextEligible = availability?.medical.nextEligibleDate ? new Date(availability.medical.nextEligibleDate) : null;
+                    const cells: React.ReactNode[] = [];
+                    for (let i = 0; i < firstDay; i++) cells.push(<div key={`e${i}`} />);
+                    for (let d = 1; d <= daysInMonth; d++) {
+                      const date = new Date(year, month, d);
+                      const isToday = date.toDateString() === today.toDateString();
+                      const isNextEligible = nextEligible && date.toDateString() === nextEligible.toDateString();
+                      const isUnavailable = availability?.unavailablePeriods.some(p => {
+                        const from = new Date(p.from); const to = new Date(p.to);
+                        return date >= from && date <= to;
+                      });
+                      cells.push(
+                        <div key={d} className={`h-7 w-full rounded text-[10px] flex items-center justify-center font-semibold transition-all ${
+                          isNextEligible ? 'bg-emerald-500 text-white ring-2 ring-emerald-400' :
+                          isUnavailable ? 'bg-destructive/20 text-destructive border border-destructive/30' :
+                          isToday ? 'bg-primary/20 text-primary border border-primary/30 font-bold' :
+                          'bg-muted/30 text-foreground hover:bg-muted/50'
+                        }`} title={isNextEligible ? 'Next eligible date' : isUnavailable ? 'Unavailable' : ''}>
+                          {d}
+                        </div>
+                      );
+                    }
+                    return cells;
+                  })()}
+                </div>
+                <div className="flex items-center gap-4 mt-3 text-[9px] font-semibold">
+                  <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-500 inline-block" />Next eligible date</span>
+                  <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-destructive/20 border border-destructive/30 inline-block" />Unavailable period</span>
+                  <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-primary/20 border border-primary/30 inline-block" />Today</span>
+                </div>
+              </div>
+
+              {/* Add Unavailability Period */}
+              <div className="border border-border/30 rounded-xl p-4 bg-muted/20 space-y-3">
+                <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Mark Unavailability</h4>
+                <form onSubmit={handleAddPeriod} className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-muted-foreground uppercase">From</label>
+                      <input type="date" required value={newPeriodFrom} onChange={e => setNewPeriodFrom(e.target.value)}
+                        className="w-full h-9 rounded-lg border border-border bg-background/50 px-3 text-xs" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-muted-foreground uppercase">To</label>
+                      <input type="date" required value={newPeriodTo} onChange={e => setNewPeriodTo(e.target.value)}
+                        className="w-full h-9 rounded-lg border border-border bg-background/50 px-3 text-xs" />
+                    </div>
+                  </div>
+                  <input type="text" placeholder="Reason (optional, e.g. travelling)" value={newPeriodReason}
+                    onChange={e => setNewPeriodReason(e.target.value)}
+                    className="w-full h-9 rounded-lg border border-border bg-background/50 px-3 text-xs" />
+                  <Button type="submit" isLoading={periodSubmitting} size="sm" className="bg-destructive hover:bg-destructive/90 text-white font-semibold w-full">
+                    Add Period
+                  </Button>
+                </form>
+              </div>
+
+              {/* Existing Periods List */}
+              {availability && availability.unavailablePeriods.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Scheduled Unavailability</h4>
+                  {availability.unavailablePeriods.map(p => (
+                    <div key={p._id} className="flex items-center justify-between p-2.5 rounded-lg border border-border/30 bg-muted/20">
+                      <div>
+                        <p className="text-xs font-semibold">{new Date(p.from).toLocaleDateString()} → {new Date(p.to).toLocaleDateString()}</p>
+                        {p.reason && <p className="text-[10px] text-muted-foreground">{p.reason}</p>}
+                      </div>
+                      <button onClick={() => handleDeletePeriod(p._id)}
+                        className="text-[10px] text-destructive hover:underline font-semibold">Remove</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+        </>
       )}
     </main>
   );
