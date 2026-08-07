@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { AuthProvider } from "@/components/providers/auth-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { Toaster } from "sonner";
+import { CommandPalette } from "@/components/ui/command-palette";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -19,6 +20,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeProvider defaultTheme="system" storageKey="hackathon-theme">
           <AuthProvider>
             {children}
+            <CommandPalette />
             <Toaster richColors position="top-right" />
           </AuthProvider>
         </ThemeProvider>

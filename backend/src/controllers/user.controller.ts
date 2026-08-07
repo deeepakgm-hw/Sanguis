@@ -70,11 +70,22 @@ export const deleteUser = asyncHandler(async (req: Request, res: Response) => {
 /** Admin-only: change a user's role. Kept separate from updateUser to keep privilege escalation auditable and isolated. */
 export const changeUserRole = asyncHandler(async (req: Request, res: Response) => {
   const { role } = req.body as { role: string };
-  if (!["user", "admin", "moderator"].includes(role)) throw ApiError.badRequest("Invalid role");
+  if (!["user", "admin", "moderator", "hospital", "donor"].includes(role)) throw ApiError.badRequest("Invalid role");
 
   const user = await User.findByIdAndUpdate(req.params.id, { role }, { new: true });
   if (!user) throw ApiError.notFound("User not found");
 
   await recordAudit({ req, action: "user.role_change", resourceType: "User", resourceId: req.params.id, after: { role } });
   return ApiResponse.success(res, user.toSafeJSON(), "Role updated");
+});
+
+/** Admin-only: toggle verified requester status (isEmailVerified). */
+export const verifyUser = asyncHandler(async (req: Request, res: Response) => {
+  const { isEmailVerified } = req.body as { isEmailVerified: boolean };
+  
+  const user = await User.findByIdAndUpdate(req.params.id, { isEmailVerified }, { new: true });
+  if (!user) throw ApiError.notFound("User not found");
+
+  await recordAudit({ req, action: "user.verification_change", resourceType: "User", resourceId: req.params.id, after: { isEmailVerified } });
+  return ApiResponse.success(res, user.toSafeJSON(), "User verification status updated");
 });
