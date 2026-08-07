@@ -13,6 +13,7 @@ export interface IUser extends Document {
   avatarUrl?: string;
   isEmailVerified: boolean;
   isActive: boolean;
+  isVerifiedRequester: boolean;
   mfaEnabled: boolean;
   authProvider: "local" | "google" | "github";
   lastLoginAt?: Date;
@@ -34,6 +35,7 @@ const userSchema = new Schema<IUser>(
     avatarUrl: { type: String },
     isEmailVerified: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },
+    isVerifiedRequester: { type: Boolean, default: false },
     mfaEnabled: { type: Boolean, default: false },
     authProvider: { type: String, enum: ["local", "google", "github"], default: "local" },
     lastLoginAt: { type: Date },
