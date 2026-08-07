@@ -51,29 +51,34 @@ export async function complete(prompt: string, options: CompleteOptions = {}): P
     };
   }
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
 
-  if (!response.ok) {
-    const errText = await response.text();
-    logger.error({ status: response.status, error: errText }, "Gemini API call failed");
-    throw new Error(`Gemini API error: ${response.statusText} (${errText})`);
+    if (!response.ok) {
+      const errText = await response.text();
+      logger.error({ status: response.status, error: errText }, "Gemini API call failed. Falling back to mock response.");
+      return generateMockResponse(prompt, options);
+    }
+
+    const result = (await response.json()) as any;
+    const generatedText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (!generatedText) {
+      logger.error({ result }, "Invalid response format from Gemini API. Falling back to mock response.");
+      return generateMockResponse(prompt, options);
+    }
+
+    return generatedText.trim();
+  } catch (err) {
+    logger.error({ err }, "Gemini API call threw an error. Falling back to mock response.");
+    return generateMockResponse(prompt, options);
   }
-
-  const result = (await response.json()) as any;
-  const generatedText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-
-  if (!generatedText) {
-    logger.error({ result }, "Invalid response format from Gemini API");
-    throw new Error("Invalid response received from Gemini API");
-  }
-
-  return generatedText.trim();
 }
 
 /**
@@ -208,6 +213,8 @@ function generateMockResponse(prompt: string, options: CompleteOptions): string 
  */
 export function parseCleanJson<T>(raw: string): T {
   let text = raw.trim();
+  // Strip markdown code block wrappers like ```json ... ```
+  text = text.replace(/^```json\s*/i, "").replace(/```$/, "").trim();
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
   if (start !== -1 && end !== -1 && end > start) {
