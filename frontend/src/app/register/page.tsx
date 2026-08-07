@@ -72,7 +72,12 @@ export default function RegisterPage() {
       toast.success(res.data?.message || "Account created! Check your email for the 6-digit OTP code.");
       router.push(`/verify-email?email=${encodeURIComponent(values.email)}&role=${selectedRole}`);
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Registration failed. Please check your details.");
+      const apiErrors = err?.response?.data?.errors;
+      let errorMsg = err?.response?.data?.message || err?.message;
+      if (apiErrors && Array.isArray(apiErrors) && apiErrors.length > 0) {
+        errorMsg = apiErrors.map((e: any) => e.message).join(" · ");
+      }
+      toast.error(errorMsg || "Registration failed. Please check your details.");
     }
   }
 
