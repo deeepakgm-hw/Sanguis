@@ -18,7 +18,8 @@ import {
   Moon, 
   LogOut, 
   Home, 
-  Keyboard 
+  Keyboard,
+  Building
 } from "lucide-react";
 
 export function CommandPalette() {
@@ -33,6 +34,7 @@ export function CommandPalette() {
 
   // List of all navigation commands
   const commands = [
+    { name: "Go to Tactical Command Center", description: "Admin: Unified view of blood banks & donors", action: () => router.push("/command-center"), icon: Building, category: "Navigation", shortcut: "g c" },
     { name: "Go to Portal Gateway", description: "Switch routes to Sanguis selector hub", action: () => router.push("/dashboard"), icon: Layout, category: "Navigation", shortcut: "g p" },
     { name: "Go to Donor Dashboard", description: "Volunteers: Trace milestones & dispatches", action: () => router.push("/donor/dashboard"), icon: Heart, category: "Navigation", shortcut: "g d" },
     { name: "Go to Emergency Request Form", description: "Hospitals: Dispatch matching engine", action: () => router.push("/requests/new"), icon: Activity, category: "Navigation", shortcut: "g h" },
@@ -85,6 +87,10 @@ export function CommandPalette() {
         if (e.key === "p") {
           e.preventDefault();
           router.push("/dashboard");
+        }
+        if (e.key === "c") {
+          e.preventDefault();
+          router.push("/command-center");
         }
       }
     };
