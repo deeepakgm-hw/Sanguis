@@ -9,6 +9,7 @@ import { noSqlSanitize, httpParamProtection, xssSanitize } from "./middlewares/s
 import { globalLimiter } from "./middlewares/security/rateLimiter";
 import { requestLogger } from "./middlewares/requestLogger";
 import { ipBlocker } from "./middlewares/security/ipBlocker";
+import { ipBlacklist } from "./middlewares/security/ipBlacklist";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler";
 
 import authRoutes from "./routes/auth.routes";
@@ -38,6 +39,7 @@ export function createApp(): Application {
   // --- Order matters ---
   app.use(requestLogger);
   app.use(ipBlocker);
+  app.use(ipBlacklist);
   app.use(securityHeaders);
   app.use(corsMiddleware);
   app.use(compression());

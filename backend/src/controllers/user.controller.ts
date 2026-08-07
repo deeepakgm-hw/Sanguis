@@ -79,13 +79,34 @@ export const changeUserRole = asyncHandler(async (req: Request, res: Response) =
   return ApiResponse.success(res, user.toSafeJSON(), "Role updated");
 });
 
+/** Admin-only: verify a requester (hospital) account. */
+export const verifyRequester = asyncHandler(async (req: Request, res: Response) => {
+  const user = await User.findById(req.params.id);
+  if (!user) throw ApiError.notFound("User not found");
+
+  user.isVerifiedRequester = true;
+  await user.save();
+
+  await recordAudit({
+    req,
+    action: "user.verify_requester",
+    resourceType: "User",
+    resourceId: req.params.id,
+    after: { isVerifiedRequester: true },
+  });
+
+  return ApiResponse.success(res, user.toSafeJSON(), "User verified as requester");
+});
+
 /** Admin-only: toggle verified requester status (isEmailVerified). */
 export const verifyUser = asyncHandler(async (req: Request, res: Response) => {
   const { isEmailVerified } = req.body as { isEmailVerified: boolean };
-  
+
   const user = await User.findByIdAndUpdate(req.params.id, { isEmailVerified }, { new: true });
   if (!user) throw ApiError.notFound("User not found");
 
   await recordAudit({ req, action: "user.verification_change", resourceType: "User", resourceId: req.params.id, after: { isEmailVerified } });
   return ApiResponse.success(res, user.toSafeJSON(), "User verification status updated");
 });
+
+
