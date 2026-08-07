@@ -27,5 +27,6 @@ router.patch(
 
 router.delete("/:id", requireAuth, requireRole("admin"), userController.deleteUser);
 router.patch("/:id/role", requireAuth, requireRole("admin"), userController.changeUserRole);
+router.patch("/:id/verify", requireAuth, requireRole("admin"), userController.verifyRequester);
 
 export default router;

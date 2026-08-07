@@ -78,3 +78,23 @@ export const changeUserRole = asyncHandler(async (req: Request, res: Response) =
   await recordAudit({ req, action: "user.role_change", resourceType: "User", resourceId: req.params.id, after: { role } });
   return ApiResponse.success(res, user.toSafeJSON(), "Role updated");
 });
+
+/** Admin-only: verify a requester (hospital) account. */
+export const verifyRequester = asyncHandler(async (req: Request, res: Response) => {
+  const user = await User.findById(req.params.id);
+  if (!user) throw ApiError.notFound("User not found");
+
+  user.isVerifiedRequester = true;
+  await user.save();
+
+  await recordAudit({
+    req,
+    action: "user.verify_requester",
+    resourceType: "User",
+    resourceId: req.params.id,
+    after: { isVerifiedRequester: true },
+  });
+
+  return ApiResponse.success(res, user.toSafeJSON(), "User verified as requester");
+});
+
