@@ -18,3 +18,4 @@ export * from "./Campaign";
 export * from "./DonationRegistration";
 export * from "./VerifiedDonation";
 export * from "./DonationCertificate";
+export * from "./InventoryReservation";

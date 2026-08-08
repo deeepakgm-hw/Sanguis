@@ -59,13 +59,22 @@ interface MatchItem {
   };
 }
 
+import { useSocketDispatch } from "@/hooks/useSocketDispatch";
+import { useLiveLocation } from "@/hooks/useLiveLocation";
+
 export default function DonorDashboardPage() {
   const router = useRouter();
   const { isBootstrapping } = useAuth();
   const user = useAuthStore((s) => s.user);
   const clear = useAuthStore((s) => s.clear);
 
+  const { socket } = useSocketDispatch();
   const [donorProfile, setDonorProfile] = useState<DonorProfile | null>(null);
+
+  const { isTracking, startTracking, stopTracking, currentCoords } = useLiveLocation(
+    socket,
+    donorProfile?.bloodType || "O-"
+  );
   const [matches, setMatches] = useState<MatchItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
