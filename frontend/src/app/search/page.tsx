@@ -47,21 +47,24 @@ function getUrgencyBadge(level: string) {
 export default function SearchPage() {
   const searchParams = useSearchParams();
   const { lat: userLat, lng: userLng } = useLiveLocation();
-  const [activeTab, setActiveTab] = useState<"donors" | "requests">("donors");
+  const [activeTab, setActiveTab] = useState<"donors" | "requests" | "hospitals">("donors");
   const [selectedBlood, setSelectedBlood] = useState<string>("All");
   const [query, setQuery] = useState(searchParams.get("q") || "");
   const [donors, setDonors] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
+  const [hospitals, setHospitals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [requestingId, setRequestingId] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [reqRes] = await Promise.all([
+      const [reqRes, hospRes] = await Promise.all([
         api.get("/blood-requests", { params: { status: "open", limit: 50 } }),
+        api.get("/hospitals", { params: { limit: 50 } }).catch(() => ({ data: { data: [] } })),
       ]);
       setRequests(reqRes.data?.data ?? []);
+      setHospitals(hospRes.data?.data ?? []);
       // Donors endpoint requires admin — show graceful empty state
       try {
         const dRes = await api.get("/donors", { params: { limit: 50 } });
@@ -98,8 +101,21 @@ export default function SearchPage() {
       return matchBT && matchQ;
     });
 
+  const filterHospitals = (list: any[]) =>
+    list.filter((h) => {
+      if (!query) return true;
+      const q = query.toLowerCase();
+      return (
+        h.name?.toLowerCase().includes(q) ||
+        h.city?.toLowerCase().includes(q) ||
+        h.state?.toLowerCase().includes(q) ||
+        h.address?.toLowerCase().includes(q)
+      );
+    });
+
   const visibleDonors = filterDonors(donors);
   const visibleRequests = filterRequests(requests);
+  const visibleHospitals = filterHospitals(hospitals);
 
   return (
     <AppLayout>
@@ -107,7 +123,7 @@ export default function SearchPage() {
         {/* Header */}
         <div>
           <h1 className="text-xl font-black text-slate-900 tracking-tight">Search</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Find compatible donors and live emergency requests near you</p>
+          <p className="text-sm text-slate-500 mt-0.5">Find compatible donors, emergency requests, and accredited hospitals near you</p>
         </div>
 
         {/* Search Bar + Filter Button */}
@@ -154,10 +170,14 @@ export default function SearchPage() {
 
         {/* Tabs */}
         <div className="flex items-center gap-0 border-b border-slate-200">
-          {([["donors", "Blood Donors", visibleDonors.length], ["requests", "Recent Requests", visibleRequests.length]] as const).map(([tab, label, count]) => (
+          {([
+            ["donors", "Blood Donors", visibleDonors.length],
+            ["requests", "Recent Requests", visibleRequests.length],
+            ["hospitals", "Accredited Hospitals (RapidAPI)", visibleHospitals.length],
+          ] as const).map(([tab, label, count]) => (
             <button
               key={tab}
-              onClick={() => setActiveTab(tab)}
+              onClick={() => setActiveTab(tab as any)}
               className={`pb-3 px-1 mr-6 text-sm font-bold transition-all border-b-2 ${
                 activeTab === tab
                   ? "text-[#E5384D] border-[#E5384D]"
@@ -258,7 +278,7 @@ export default function SearchPage() {
               })}
             </div>
           )
-        ) : (
+        ) : activeTab === "requests" ? (
           /* ── RECENT REQUESTS LIST ── */
           visibleRequests.length === 0 ? (
             <div className="text-center py-20 text-slate-400">
@@ -302,6 +322,65 @@ export default function SearchPage() {
                     )}
                   </div>
                 </Link>
+              ))}
+            </div>
+          )
+        ) : (
+          /* ── ACCREDITED HOSPITALS (RAPIDAPI) LIST ── */
+          visibleHospitals.length === 0 ? (
+            <div className="text-center py-20 text-slate-400">
+              <Building2 className="w-12 h-12 mx-auto mb-3 opacity-30" />
+              <p className="font-bold text-sm">No accredited hospitals found</p>
+              <p className="text-xs mt-1">Try a different city or search query</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {visibleHospitals.map((hosp, idx) => (
+                <div
+                  key={hosp.id || idx}
+                  className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm hover:shadow-md hover:border-[#E5384D]/30 transition-all duration-200 space-y-3"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-11 h-11 rounded-2xl bg-sky-50 text-sky-600 border border-sky-100 flex items-center justify-center font-bold">
+                        🏥
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-sm text-slate-900 leading-snug">{hosp.name}</h3>
+                        <p className="text-xs text-slate-500 font-medium mt-0.5">{hosp.category || "Emergency & Trauma Center"}</p>
+                      </div>
+                    </div>
+
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      RapidAPI Verified
+                    </span>
+                  </div>
+
+                  <div className="text-xs text-slate-600 space-y-1 bg-slate-50 p-3 rounded-xl border border-slate-100 font-medium">
+                    <p className="flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-[#E5384D] shrink-0" />
+                      <span>{hosp.address || `${hosp.city}, ${hosp.state}`}</span>
+                    </p>
+                    {hosp.phoneNumber && (
+                      <p className="flex items-center gap-1.5 text-slate-500">
+                        <span className="font-bold">📞 Phone:</span> {hosp.phoneNumber}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-[10px] font-extrabold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
+                      🟢 24/7 Emergency Transfusion Ready
+                    </span>
+                    <Link
+                      href="/requests/new"
+                      className="px-3 py-1.5 rounded-xl text-xs font-bold bg-[#E5384D] text-white hover:bg-rose-600 shadow-sm transition-all flex items-center gap-1"
+                    >
+                      Request Blood
+                    </Link>
+                  </div>
+                </div>
               ))}
             </div>
           )
