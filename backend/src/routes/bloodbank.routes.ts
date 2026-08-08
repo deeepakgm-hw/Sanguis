@@ -27,6 +27,12 @@ router.get(
   bloodBankController.getReallocationSuggestions
 );
 
+// Blood Bank Search endpoint with availability ranking
+router.get(
+  "/search",
+  bloodBankController.searchBloodBanks
+);
+
 // Register a blood bank profile
 router.post(
   "/",

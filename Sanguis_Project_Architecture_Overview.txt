@@ -1,0 +1,128 @@
+============================================================
+SANGUIS EMERGENCY BLOOD NETWORK — ARCHITECTURE & PROJECT OVERVIEW
+============================================================
+
+Project Name: Sanguis
+Document Type: Technical Architecture & Directory Overview
+Audit Date: 2026-08-08
+
+------------------------------------------------------------
+1. PROJECT ARCHITECTURE OVERVIEW
+------------------------------------------------------------
+Sanguis is a real-time blood donation, tracking, and emergency response platform.
+The application is built on a full-stack Javascript/Typescript architecture divided into two primary sub-systems:
+
+1. Backend (Express API Server)
+   - Runtime: Node.js (via tsx watch in development)
+   - Port: 5000
+   - Database: MongoDB (via Mongoose ODM)
+   - Cache / Live Geospatial Indexes: Redis (ioredis / MockRedis)
+   - Transport: HTTP (REST API) + WebSockets (Socket.IO)
+   - AI Engine: Local NLP Parsers + Gemini API integrations for shortage forecasting and operations routing.
+
+2. Frontend (Next.js App Router Client)
+   - Framework: React (Next.js 14.x)
+   - Port: 3000
+   - Styling: Vanilla CSS, Tailwind CSS
+   - Maps: Leaflet JS mapping engine with CSS/WebGL 3D perspective transforms
+   - Geolocation: Browser HTML5 Geolocation API (`navigator.geolocation.watchPosition`)
+   - State Management: Zustand (AuthStore)
+
+------------------------------------------------------------
+2. WORKSPACE DIRECTORY STRUCTURE
+------------------------------------------------------------
+The project files are structured as follows:
+
+sanguis/
+├── backend/
+│   ├── src/
+│   │   ├── ai/               # AI models, Copilot, anomaly detection, forecasting
+│   │   ├── config/           # Database, Redis, and Socket.IO configurations
+│   │   ├── controllers/      # Express route handlers
+│   │   ├── middlewares/      # Authentication, RBAC, validator middlewares
+│   │   ├── models/           # Mongoose schemas (User, Donor, BloodBank, etc.)
+│   │   ├── routes/           # REST API endpoints
+│   │   ├── services/         # Core business logic (inventory, matching, auditing)
+│   │   ├── utils/            # Helper utilities (Haversine math, coordinate checks)
+│   │   ├── validators/       # Request validation schemas (Joi/Zod)
+│   │   └── server.ts         # Backend application entry point
+│   ├── package.json
+│   └── tsconfig.json
+│
+├── frontend/
+│   ├── public/               # Static assets (logo, markers)
+│   ├── src/
+│   │   ├── app/              # Next.js pages (dashboard, find-blood, command-center)
+│   │   ├── components/       # Reusable components (layout, map, widgets)
+│   │   ├── hooks/            # React hooks (useLiveLocation, useAuth)
+│   │   ├── lib/              # Client API clients, socket connections
+│   │   ├── services/         # Client-side tracking services
+│   │   └── store/            # Zustand global state stores
+│   ├── package.json
+│   └── tsconfig.json
+
+------------------------------------------------------------
+3. BACKEND API ENDPOINTS
+------------------------------------------------------------
+
+AUTH & USERS
+- POST  /api/v1/auth/register          # Register user accounts
+- POST  /api/v1/auth/login             # Authenticate & receive JWT
+- GET   /api/v1/users/profile          # Get logged-in user profile details
+
+DONORS
+- GET   /api/v1/donors                 # List authenticated donor directory
+- GET   /api/v1/donors/me              # Retrieve logged-in donor status
+- POST  /api/v1/donors                 # Create or update donor profile
+- PATCH /api/v1/donors/me/location     # REST endpoint for device GPS updates
+
+BLOOD BANKS & INVENTORY
+- GET   /api/v1/bloodbanks             # List/Geo-query verified blood banks
+- GET   /api/v1/bloodbanks/search      # Query blood banks sorted by proximity & stock
+- POST  /api/v1/bloodbanks             # Register blood bank profile
+- PATCH /api/v1/bloodbanks/:id/inventory # Adjust inventory stock counts
+
+AI COPILOT & FORECASTING
+- POST  /api/v1/ai/parse-requirement   # NLP query extractor (Regex parser)
+- POST  /api/v1/ai/copilot             # Command center assistant
+- GET   /api/v1/ai/ranking             # Proximity candidates rank
+- GET   /api/v1/ai/forecast            # Shortage demand predictor
+
+------------------------------------------------------------
+4. DATABASE MODEL SCHEMAS
+------------------------------------------------------------
+
+USER MODEL (models/User.ts)
+- name: String (required)
+- email: String (unique, required)
+- role: String ("user", "donor", "hospital", "admin")
+- isEmailVerified: Boolean
+
+DONOR MODEL (models/Donor.ts)
+- userId: ObjectId -> User
+- bloodType: String (A+, A-, B+, B-, AB+, AB-, O+, O-)
+- location: { type: "Point", coordinates: [lng, lat] }
+- trustScore: Number
+- totalDonations: Number
+- isLiveTracking: Boolean
+
+BLOOD BANK MODEL (models/BloodBank.ts)
+- name: String (required)
+- address: String
+- contactPhone: String
+- owner: ObjectId -> User
+- location: { type: "Point", coordinates: [lng, lat] }
+- isVerified: Boolean
+- inventory: [{ bloodType: String, unitsAvailable: Number, lastRestocked: Date }]
+
+------------------------------------------------------------
+5. SECURITY & ACCESS CONTROL INFRASTRUCTURE
+------------------------------------------------------------
+The application implements strict protection layers:
+- Identity Spoofing Protection: Live Socket.IO position tracking locks the user sub identity directly from the decoded JWT payload (`socket.data.user.sub`), preventing clients from updating coordinates for other donors.
+- Access Control: RBAC (Role-Based Access Control) gates admin and hospital actions using `requireRole` and `requireOwnership` middlewares.
+- Proximity Verification: Real donor coordinates are processed via Redis GEO hashes and backend calculations, shielding precise GPS details from public directories.
+
+============================================================
+END OF ARCHITECTURE OVERVIEW FILE
+============================================================

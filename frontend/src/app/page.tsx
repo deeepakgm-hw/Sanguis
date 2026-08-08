@@ -53,7 +53,7 @@ const slides = [
       </svg>
     ),
     title: "Get Connect\nCommunity",
-    subtitle: "Join thousands of donors building a stronger blood supply network across Africa and beyond.",
+    subtitle: "Join thousands of donors building a stronger blood supply network across India and beyond.",
   },
 ];
 
@@ -174,10 +174,10 @@ export default function OnboardingPage() {
               "Sanguis connected me with a B+ donor within 20 minutes during my mother's surgery. This platform saved her life."
             </p>
             <div className="flex items-center gap-2 mt-3">
-              <div className="w-7 h-7 rounded-full bg-white/20 border border-white/30 flex items-center justify-center text-[10px] text-white font-bold">S</div>
+              <div className="w-7 h-7 rounded-full bg-white/20 border border-white/30 flex items-center justify-center text-[10px] text-white font-bold">P</div>
               <div>
-                <p className="text-white text-[11px] font-bold">Sarah Okafor</p>
-                <p className="text-white/60 text-[10px]">Lagos, Nigeria</p>
+                <p className="text-white text-[11px] font-bold">Priya Sharma</p>
+                <p className="text-white/60 text-[10px]">Bengaluru, India</p>
               </div>
             </div>
           </div>
@@ -198,7 +198,7 @@ export default function OnboardingPage() {
             <div className="text-xs text-gray-400 font-medium uppercase tracking-widest mb-1">Blood Donor Network</div>
             <h2 className="text-3xl font-black text-gray-900 tracking-tight mb-2">Welcome!</h2>
             <p className="text-gray-500 text-sm leading-relaxed">
-              Join the community of donors and recipients saving lives across Africa.
+              Join the community of donors and recipients saving lives across India.
             </p>
           </div>
 
