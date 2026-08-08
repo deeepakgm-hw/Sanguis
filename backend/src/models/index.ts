@@ -14,3 +14,7 @@ export * from "./BlockedIP";
 export * from "./UploadedFile";
 export * from "./UserPreferences";
 export * from "./PendingRegistration";
+export * from "./Campaign";
+export * from "./DonationRegistration";
+export * from "./VerifiedDonation";
+export * from "./DonationCertificate";
