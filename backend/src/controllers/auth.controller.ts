@@ -13,7 +13,7 @@ function setRefreshCookie(res: Response, token: string) {
   res.cookie(REFRESH_COOKIE, token, {
     httpOnly: true, // JS can never read this -> immune to XSS token theft
     secure: env.NODE_ENV === "production",
-    sameSite: "strict",
+    sameSite: "lax",
     path: "/api/v1/auth", // scoped narrowly, not sent on unrelated routes
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
