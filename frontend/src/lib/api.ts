@@ -59,7 +59,7 @@ api.interceptors.response.use(
       return api(originalRequest);
     } catch (refreshError) {
       useAuthStore.getState().clear();
-      return Promise.reject(refreshError);
+      return Promise.reject(new Error("SESSION_EXPIRED"));
     } finally {
       isRefreshing = false;
     }

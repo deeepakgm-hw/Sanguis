@@ -26,12 +26,14 @@ import {
   Eye,
   Check,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/ui/sidebar";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
 import { toast } from "sonner";
 
 export default function DonationPage() {
+  const router = useRouter();
   const user = useAuthStore((s) => s.user);
 
   const [activeTab, setActiveTab] = useState<
@@ -97,10 +99,19 @@ export default function DonationPage() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === "registrations") fetchRegistrations();
-    if (activeTab === "history") fetchDonationHistory();
-    if (activeTab === "certificates") fetchCertificates();
-  }, [activeTab]);
+    if (activeTab === "registrations" && user) fetchRegistrations();
+    if (activeTab === "history" && user) fetchDonationHistory();
+    if (activeTab === "certificates" && user) fetchCertificates();
+  }, [activeTab, user]);
+
+  const handleOpenRegistrationModal = (campaign: any) => {
+    if (!user) {
+      toast.error("Please sign in to register for blood donation camps.");
+      router.push("/login");
+      return;
+    }
+    setSelectedCampaign(campaign);
+  };
 
   const fetchStats = async () => {
     try {
@@ -130,11 +141,17 @@ export default function DonationPage() {
   };
 
   const fetchRegistrations = async () => {
+    if (!user) return;
     setLoadingRegistrations(true);
     try {
       const res = await api.get("/donations/my-registrations");
       setRegistrations(res.data?.data || []);
-    } catch {
+    } catch (err: any) {
+      if (err?.message === "SESSION_EXPIRED" || err?.response?.status === 401) {
+        toast.error("Please sign in to view your registrations.");
+        router.push("/login");
+        return;
+      }
       toast.error("Failed to load your registrations");
     } finally {
       setLoadingRegistrations(false);
@@ -142,20 +159,32 @@ export default function DonationPage() {
   };
 
   const fetchDonationHistory = async () => {
+    if (!user) return;
     try {
       const res = await api.get("/donations/my-donations");
       setDonationsHistory(res.data?.data || []);
-    } catch {
+    } catch (err: any) {
+      if (err?.message === "SESSION_EXPIRED" || err?.response?.status === 401) {
+        toast.error("Please sign in to view donation history.");
+        router.push("/login");
+        return;
+      }
       toast.error("Failed to load donation history");
     }
   };
 
   const fetchCertificates = async () => {
+    if (!user) return;
     setLoadingCertificates(true);
     try {
       const res = await api.get("/donations/my-certificates");
       setCertificates(res.data?.data || []);
-    } catch {
+    } catch (err: any) {
+      if (err?.message === "SESSION_EXPIRED" || err?.response?.status === 401) {
+        toast.error("Please sign in to view your certificates.");
+        router.push("/login");
+        return;
+      }
       toast.error("Failed to load digital certificates");
     } finally {
       setLoadingCertificates(false);
@@ -490,7 +519,7 @@ export default function DonationPage() {
 
                         <button
                           disabled={isFull}
-                          onClick={() => setSelectedCampaign(c)}
+                          onClick={() => handleOpenRegistrationModal(c)}
                           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
                             isFull
                               ? "bg-slate-100 dark:bg-zinc-800 text-slate-400 cursor-not-allowed"
