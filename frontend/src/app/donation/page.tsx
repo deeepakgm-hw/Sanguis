@@ -31,6 +31,7 @@ import { Sidebar } from "@/components/ui/sidebar";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
 import { toast } from "sonner";
+import { QRCodeSVG } from "qrcode.react";
 
 export default function DonationPage() {
   const router = useRouter();
@@ -252,28 +253,38 @@ export default function DonationPage() {
     }
   };
 
-  const handleCheckInAndVerify = async (e: React.FormEvent) => {
+  const handleStep1CheckIn = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!checkInCode) return;
     setVerifying(true);
     try {
-      // 1. Check in
       const checkInRes = await api.post("/donations/registrations/check-in", {
-        registrationCode: checkInCode,
+        registrationCode: checkInCode.trim(),
       });
       const regRecord = checkInRes.data?.data;
       setCheckedInRecord(regRecord);
+      toast.success("STEP 1 COMPLETE: Participant Checked In at Venue!");
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Check-in failed");
+    } finally {
+      setVerifying(false);
+    }
+  };
 
-      // 2. Verify donation
-      const verifyRes = await api.post("/donations/registrations/verify", {
-        registrationId: regRecord._id,
+  const handleStep2VerifyDonation = async () => {
+    if (!checkedInRecord?._id) return;
+    setVerifying(true);
+    try {
+      await api.post("/donations/registrations/verify", {
+        registrationId: checkedInRecord._id,
         unitsDonated: 1,
       });
-
-      toast.success("Donation VERIFIED! Digital certificate generated successfully!");
+      toast.success("STEP 2 COMPLETE: Blood Donation Verified & Digital Certificate Issued!");
+      setCheckedInRecord(null);
       setCheckInCode("");
+      fetchStats();
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Verification failed");
+      toast.error(err?.response?.data?.message || "Donation verification failed");
     } finally {
       setVerifying(false);
     }
@@ -939,33 +950,68 @@ export default function DonationPage() {
                 </h2>
               </div>
               <p className="text-xs text-slate-500 dark:text-zinc-400">
-                Authorized medical personnel scan or enter participant Registration Code (`SDN-XXXXXXXX`) to verify blood donation.
+                Authorized medical personnel scan or enter participant Registration Code (`SDN-XXXXXXXX`).
               </p>
             </div>
 
-            <form onSubmit={handleCheckInAndVerify} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-zinc-300 mb-1">
-                  Enter Registration Code / Scan Pass *
-                </label>
+            {/* STEP 1: VENUE CHECK-IN */}
+            <div className="p-4 bg-slate-50 dark:bg-zinc-950 rounded-2xl border border-slate-200 dark:border-zinc-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black text-slate-800 dark:text-zinc-200 uppercase tracking-wider">
+                  STEP 1: Participant Check-in at Venue
+                </span>
+                <span className="px-2 py-0.5 rounded text-[9px] font-black bg-blue-100 text-blue-800 uppercase">
+                  Check-in Only
+                </span>
+              </div>
+
+              <form onSubmit={handleStep1CheckIn} className="space-y-3">
                 <input
                   type="text"
                   required
-                  placeholder="e.g. SDN-84920412"
+                  placeholder="Enter Registration Code (e.g. SDN-84920412)"
                   value={checkInCode}
                   onChange={(e) => setCheckInCode(e.target.value)}
-                  className="w-full h-12 px-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950 text-sm font-bold tracking-widest font-mono"
+                  className="w-full h-11 px-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-sm font-bold tracking-widest font-mono"
                 />
-              </div>
+                <button
+                  type="submit"
+                  disabled={verifying}
+                  className="w-full h-10 rounded-xl font-bold text-xs bg-blue-600 text-white hover:bg-blue-700 transition-all shadow-md shadow-blue-600/20"
+                >
+                  {verifying ? "Checking In..." : "1. Confirm Venue Check-In (CHECKED_IN)"}
+                </button>
+              </form>
+            </div>
 
-              <button
-                type="submit"
-                disabled={verifying}
-                className="w-full h-11 rounded-xl font-bold text-xs bg-emerald-600 text-white hover:bg-emerald-700 transition-all shadow-md shadow-emerald-600/20"
-              >
-                {verifying ? "Processing Check-in & Verification..." : "Check In Donor & Verify Donation"}
-              </button>
-            </form>
+            {/* STEP 2: ACTUAL DONATION VERIFICATION */}
+            {checkedInRecord && (
+              <div className="p-4 bg-emerald-50/60 dark:bg-emerald-950/40 rounded-2xl border border-emerald-200 dark:border-emerald-900 space-y-3 animate-in fade-in">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-emerald-800 dark:text-emerald-300 uppercase tracking-wider">
+                    STEP 2: Verify Actual Blood Donation
+                  </span>
+                  <span className="px-2 py-0.5 rounded text-[9px] font-black bg-emerald-100 text-emerald-800 uppercase">
+                    Medical Verification
+                  </span>
+                </div>
+
+                <div className="text-xs text-slate-700 dark:text-zinc-300 space-y-1 font-medium bg-white dark:bg-zinc-900 p-3 rounded-xl border border-emerald-100 dark:border-emerald-900">
+                  <p><span className="font-bold">Participant Name:</span> {(checkedInRecord.user as any)?.name || "Registered Donor"}</p>
+                  <p><span className="font-bold">Registration Pass:</span> {checkedInRecord.registrationCode}</p>
+                  <p><span className="font-bold">Blood Group:</span> {checkedInRecord.bloodGroup}</p>
+                  <p><span className="font-bold">Check-in Status:</span> 🟢 CHECKED_IN ({checkedInRecord.attendanceTimestamp ? new Date(checkedInRecord.attendanceTimestamp).toLocaleTimeString() : "Just now"})</p>
+                </div>
+
+                <button
+                  onClick={handleStep2VerifyDonation}
+                  disabled={verifying}
+                  className="w-full h-11 rounded-xl font-bold text-xs bg-emerald-600 text-white hover:bg-emerald-700 transition-all shadow-md shadow-emerald-600/20"
+                >
+                  {verifying ? "Issuing Digital Certificate..." : "2. Verify Actual Blood Donation & Issue Certificate"}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </main>
@@ -1058,8 +1104,8 @@ export default function DonationPage() {
               </button>
             </div>
 
-            <div className="bg-rose-50 dark:bg-rose-950/40 p-4 rounded-2xl border border-rose-200 dark:border-rose-900 inline-block">
-              <QrCode className="w-32 h-32 text-[#E5384D] mx-auto" />
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 dark:border-zinc-800 inline-block shadow-sm">
+              <QRCodeSVG value={selectedQR.registrationCode} size={160} level="H" />
             </div>
 
             <div>
@@ -1067,7 +1113,7 @@ export default function DonationPage() {
                 {selectedQR.registrationCode}
               </p>
               <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1 font-medium">
-                Show this code or QR pass to authorized staff at the camp entry desk.
+                Show this machine-readable QR pass to authorized staff at camp entry.
               </p>
             </div>
           </div>

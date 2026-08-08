@@ -6,14 +6,13 @@ import { useParams } from "next/navigation";
 import {
   Award,
   ShieldCheck,
-  QrCode,
   Printer,
   ChevronLeft,
   ExternalLink,
   Droplet,
   CheckCircle2,
-  FileCheck,
 } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 
@@ -68,7 +67,9 @@ export default function CertificateViewPage() {
     );
   }
 
-  const verifyUrl = `${typeof window !== "undefined" ? window.location.origin : "http://localhost:3000"}/certificate/verify/${certificate.certificateId}`;
+  const verifyUrl = typeof window !== "undefined"
+    ? `${window.location.origin}/certificate/verify/${certificate.certificateId}`
+    : `http://localhost:3000/certificate/verify/${certificate.certificateId}`;
 
   return (
     <div className="min-h-screen bg-slate-100 dark:bg-zinc-950 p-4 md:p-8 font-sans">
@@ -197,18 +198,18 @@ export default function CertificateViewPage() {
           </div>
         </div>
 
-        {/* Certificate Bottom Section with QR Verification & AICTE Disclaimer */}
+        {/* Certificate Bottom Section with Machine-Readable QR Code & AICTE Disclaimer */}
         <div className="mt-10 pt-6 border-t border-slate-200 grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
-          {/* QR Verification Box */}
+          {/* Machine-Readable QR Verification Box */}
           <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200">
             <div className="bg-white p-2 rounded-xl border border-slate-200 shrink-0">
-              <QrCode className="w-14 h-14 text-slate-900" />
+              <QRCodeSVG value={verifyUrl} size={64} level="H" />
             </div>
             <div className="text-left text-[10px] font-medium text-slate-500 space-y-0.5">
               <p className="font-bold text-slate-800 text-xs">Scan to Verify</p>
-              <p>Official digital verification registry token.</p>
+              <p>Scan with camera to open official Sanguis digital registry.</p>
               <p className="font-mono text-[9px] text-[#E5384D] truncate max-w-[140px]">
-                {certificate.verificationToken.slice(0, 18)}...
+                {certificate.certificateId}
               </p>
             </div>
           </div>
