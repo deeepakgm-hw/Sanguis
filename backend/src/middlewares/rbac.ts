@@ -57,3 +57,17 @@ export async function requireVerifiedRequester(req: Request, _res: Response, nex
   next();
 }
 
+/**
+ * Permission guard using SystemAction from config/permissions.ts.
+ */
+export function requirePermission(action: import("../config/permissions").SystemAction) {
+  return (req: Request, _res: Response, next: NextFunction): void => {
+    if (!req.user) return next(ApiError.unauthorized("Authentication required"));
+    const { hasPermission } = require("../config/permissions");
+    if (!hasPermission(req.user.role as any, action)) {
+      return next(ApiError.forbidden(`Permission denied. Required: ${action}`));
+    }
+    next();
+  };
+}
+

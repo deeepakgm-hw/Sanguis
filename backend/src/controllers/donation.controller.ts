@@ -14,7 +14,7 @@ import {
 } from "../models";
 import { randomInt, randomUUID } from "crypto";
 
-// Helper to generate unique codes
+// Helper functions for unique domain IDs
 function generateRegistrationCode(): string {
   return `SDN-${randomInt(10000000, 99999999)}`;
 }
@@ -46,9 +46,8 @@ export const getCampaigns = asyncHandler(async (req: Request, res: Response) => 
 
   const query: any = {};
 
-  // Status filtering: default to APPROVED for general users unless admin/organizer explicitly asks
-  if (status === "ALL" && (req.user?.role === "admin" || req.user?.role === "hospital")) {
-    // Return all statuses for admin/organizer dashboard
+  if (status === "ALL" && (req.user?.role === "admin" || req.user?.role === "hospital" || (req.user?.role as string) === "bloodbank")) {
+    // Admin & staff can view all status states
   } else if (status) {
     query.status = status;
   }
@@ -104,7 +103,6 @@ export const getCampaignById = asyncHandler(async (req: Request, res: Response) 
     throw ApiError.notFound("Donation campaign not found");
   }
 
-  // Check if current authenticated user has already registered
   let myRegistration = null;
   if (req.user?.sub) {
     myRegistration = await DonationRegistration.findOne({
@@ -126,7 +124,6 @@ export const createCampaign = asyncHandler(async (req: Request, res: Response) =
     title,
     description,
     organizerName,
-    organizerType,
     venue,
     address,
     city,
@@ -143,7 +140,7 @@ export const createCampaign = asyncHandler(async (req: Request, res: Response) =
     requiredDocuments,
   } = req.body;
 
-  if (!title || !description || !organizerName || !organizerType || !venue || !address || !city || !date || !contactPhone) {
+  if (!title || !description || !venue || !address || !city || !date || !contactPhone) {
     throw ApiError.badRequest("Please provide all required campaign details");
   }
 
@@ -152,18 +149,19 @@ export const createCampaign = asyncHandler(async (req: Request, res: Response) =
     throw ApiError.unauthorized("User profile not found");
   }
 
-  // Auto-approve if created by admin or verified hospital/blood-bank
-  const isAdminOrVerified = user.role === "admin" || (user.role === "hospital" && user.isEmailVerified);
-  const status = isAdminOrVerified ? "APPROVED" : "PENDING_APPROVAL";
+  // Derive organizer authorization strictly from req.user identity
+  const computedOrganizerType = user.role === "hospital" ? "hospital" : (user.role as string) === "bloodbank" ? "bloodbank" : user.role === "admin" ? "admin" : "ngo";
+  const isAdminOrVerifiedStaff = user.role === "admin" || (user.role === "hospital" && user.isEmailVerified) || ((user.role as string) === "bloodbank" && user.isEmailVerified);
+  const status = isAdminOrVerifiedStaff ? "APPROVED" : "PENDING_APPROVAL";
 
   const campaign = await Campaign.create({
     campaignId: generateCampaignId(),
     title,
     description,
-    organizerName,
-    organizerType,
+    organizerName: organizerName || user.name || "Authorized Medical Organizer",
+    organizerType: computedOrganizerType,
     organizerUser: user._id,
-    hospitalOrBank: user.role === "hospital" ? user._id : undefined,
+    hospitalOrBank: (user.role === "hospital" || (user.role as string) === "bloodbank") ? user._id : undefined,
     venue,
     address,
     city,
@@ -181,14 +179,22 @@ export const createCampaign = asyncHandler(async (req: Request, res: Response) =
     currentRegistrationsCount: 0,
     eligibilityRequirements: eligibilityRequirements || ["Age 18-65", "Weight >= 45kg", "90 days since last donation"],
     requiredDocuments: requiredDocuments || ["Government ID (Aadhaar / Passport / Driving License)"],
-    isVerifiedOrganizer: isAdminOrVerified,
+    isVerifiedOrganizer: isAdminOrVerifiedStaff,
     status,
+  });
+
+  await AuditLog.create({
+    userId: user._id,
+    action: "CAMPAIGN_CREATED",
+    resource: `Campaign:${campaign.campaignId}`,
+    details: { title, status },
+    ipAddress: req.ip,
   });
 
   return ApiResponse.created(
     res,
     campaign,
-    isAdminOrVerified
+    isAdminOrVerifiedStaff
       ? "Donation campaign created and published successfully!"
       : "Campaign submitted successfully. It will be live once reviewed by Sanguis administrators."
   );
@@ -205,12 +211,19 @@ export const approveCampaign = asyncHandler(async (req: Request, res: Response) 
   campaign.isVerifiedOrganizer = true;
   await campaign.save();
 
-  // Notify organizer
   await Notification.create({
     user: campaign.organizerUser,
     title: "🎉 Campaign Approved!",
     message: `Your blood donation camp "${campaign.title}" has been approved and is now live for donor registrations.`,
     type: "success",
+  });
+
+  await AuditLog.create({
+    userId: req.user?.sub,
+    action: "CAMPAIGN_APPROVED",
+    resource: `Campaign:${campaign.campaignId}`,
+    details: { approvedBy: req.user?.sub },
+    ipAddress: req.ip,
   });
 
   return ApiResponse.success(res, campaign, "Campaign approved and published live");
@@ -228,12 +241,19 @@ export const rejectCampaign = asyncHandler(async (req: Request, res: Response) =
   campaign.rejectionReason = reason || "Does not meet authorized campaign criteria";
   await campaign.save();
 
-  // Notify organizer
   await Notification.create({
     user: campaign.organizerUser,
     title: "Campaign Update",
     message: `Your campaign "${campaign.title}" was not approved. Reason: ${campaign.rejectionReason}`,
     type: "error",
+  });
+
+  await AuditLog.create({
+    userId: req.user?.sub,
+    action: "CAMPAIGN_REJECTED",
+    resource: `Campaign:${campaign.campaignId}`,
+    details: { reason: campaign.rejectionReason },
+    ipAddress: req.ip,
   });
 
   return ApiResponse.success(res, campaign, "Campaign rejected");
@@ -246,10 +266,14 @@ export const cancelCampaign = asyncHandler(async (req: Request, res: Response) =
     throw ApiError.notFound("Campaign not found");
   }
 
+  // Ownership check
+  if (req.user?.role !== "admin" && campaign.organizerUser.toString() !== req.user?.sub) {
+    throw ApiError.forbidden("You do not have permission to cancel this campaign.");
+  }
+
   campaign.status = "CANCELLED";
   await campaign.save();
 
-  // Notify all registered participants
   const registrations = await DonationRegistration.find({ campaign: campaign._id, status: { $nin: ["CANCELLED"] } });
   for (const reg of registrations) {
     reg.status = "CANCELLED";
@@ -262,6 +286,14 @@ export const cancelCampaign = asyncHandler(async (req: Request, res: Response) =
     });
   }
 
+  await AuditLog.create({
+    userId: req.user?.sub,
+    action: "CAMPAIGN_CANCELLED",
+    resource: `Campaign:${campaign.campaignId}`,
+    details: { cancelledBy: req.user?.sub },
+    ipAddress: req.ip,
+  });
+
   return ApiResponse.success(res, campaign, "Campaign cancelled and participants notified");
 });
 
@@ -270,37 +302,21 @@ export const cancelCampaign = asyncHandler(async (req: Request, res: Response) =
 export const registerForCampaign = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
   const { bloodGroup } = req.body;
-
-  const campaign = await Campaign.findById(id);
-  if (!campaign) {
-    throw ApiError.notFound("Campaign not found");
-  }
-
-  if (campaign.status !== "APPROVED" && campaign.status !== "UPCOMING" && campaign.status !== "ONGOING") {
-    throw ApiError.badRequest("This campaign is not accepting new registrations");
-  }
-
-  if (campaign.currentRegistrationsCount >= campaign.availableCapacity) {
-    throw ApiError.badRequest("Campaign capacity is full. All slots have been booked.");
-  }
-
-  if (new Date(campaign.date).getTime() + 24 * 60 * 60 * 1000 < Date.now()) {
-    throw ApiError.badRequest("Registration deadline for this campaign has passed");
-  }
-
   const userId = req.user?.sub;
+
   if (!userId) {
     throw ApiError.unauthorized("User authentication required");
   }
 
   const user = await User.findById(userId);
   if (!user) {
-    throw ApiError.notFound("User not found");
+    throw ApiError.notFound("User profile not found");
   }
 
+  // Check duplicate registration
   const existingReg = await DonationRegistration.findOne({
     user: userId,
-    campaign: campaign._id,
+    campaign: id,
     status: { $nin: ["CANCELLED"] },
   });
 
@@ -308,42 +324,60 @@ export const registerForCampaign = asyncHandler(async (req: Request, res: Respon
     throw ApiError.conflict("You have already registered for this blood donation camp.");
   }
 
+  // ATOMIC CAPACITY ENFORCEMENT
+  // Atomically increments currentRegistrationsCount ONLY IF currentRegistrationsCount < availableCapacity
+  const updatedCampaign = await Campaign.findOneAndUpdate(
+    {
+      _id: id,
+      status: { $in: ["APPROVED", "UPCOMING", "ONGOING"] },
+      $expr: { $lt: ["$currentRegistrationsCount", "$availableCapacity"] },
+    },
+    { $inc: { currentRegistrationsCount: 1 } },
+    { new: true }
+  );
+
+  if (!updatedCampaign) {
+    throw ApiError.badRequest("Campaign is full, inactive, or registration deadline has passed.");
+  }
+
   const donor = await Donor.findOne({ userId });
   const selectedBloodGroup = bloodGroup || donor?.bloodType || "O+";
   const regCode = generateRegistrationCode();
+
+  // Machine-readable secure QR pass payload (No private PII exposed)
   const qrData = JSON.stringify({
     regCode,
-    campaignId: campaign.campaignId,
-    userName: user.name,
-    bloodGroup: selectedBloodGroup,
-    date: campaign.date,
+    campaignId: updatedCampaign.campaignId,
   });
 
   const registration = await DonationRegistration.create({
     registrationCode: regCode,
     user: user._id,
     donor: donor?._id,
-    campaign: campaign._id,
+    campaign: updatedCampaign._id,
     bloodGroup: selectedBloodGroup,
     status: "CONFIRMED",
     qrCodeData: qrData,
   });
 
-  // Increment registrations count
-  campaign.currentRegistrationsCount += 1;
-  await campaign.save();
-
-  // Create notification
   await Notification.create({
     user: user._id,
     title: "Donation Registration Confirmed",
-    message: `You are registered for "${campaign.title}" on ${new Date(campaign.date).toLocaleDateString()} at ${campaign.venue}. Registration ID: ${regCode}`,
+    message: `You are registered for "${updatedCampaign.title}" on ${new Date(updatedCampaign.date).toLocaleDateString()} at ${updatedCampaign.venue}. Registration ID: ${regCode}`,
     type: "success",
+  });
+
+  await AuditLog.create({
+    userId: user._id,
+    action: "REGISTRATION_CREATED",
+    resource: `Registration:${regCode}`,
+    details: { campaignId: updatedCampaign.campaignId },
+    ipAddress: req.ip,
   });
 
   return ApiResponse.created(
     res,
-    { registration, campaign },
+    { registration, campaign: updatedCampaign },
     "Donation registration confirmed successfully!"
   );
 });
@@ -363,14 +397,13 @@ export const cancelRegistration = asyncHandler(async (req: Request, res: Respons
     throw ApiError.notFound("Registration record not found");
   }
 
-  if (reg.status === "ATTENDED" || reg.status === "COMPLETED") {
-    throw ApiError.badRequest("Cannot cancel a registration that has already been attended or verified");
+  if (reg.status === "CHECKED_IN" || reg.status === "ATTENDED" || reg.status === "COMPLETED") {
+    throw ApiError.badRequest("Cannot cancel a registration that has already been checked in or verified.");
   }
 
   reg.status = "CANCELLED";
   await reg.save();
 
-  // Decrement campaign capacity count
   await Campaign.findByIdAndUpdate(reg.campaign, { $inc: { currentRegistrationsCount: -1 } });
 
   return ApiResponse.success(res, reg, "Registration cancelled");
@@ -379,7 +412,7 @@ export const cancelRegistration = asyncHandler(async (req: Request, res: Respons
 export const checkInParticipant = asyncHandler(async (req: Request, res: Response) => {
   const { registrationCode } = req.body;
   if (!registrationCode) {
-    throw ApiError.badRequest("Registration code is required");
+    throw ApiError.badRequest("Registration code or QR payload is required");
   }
 
   const reg = await DonationRegistration.findOne({
@@ -392,18 +425,47 @@ export const checkInParticipant = asyncHandler(async (req: Request, res: Respons
     throw ApiError.notFound("Registration record not found for code: " + registrationCode);
   }
 
+  const campaign = reg.campaign as any;
+
+  // Authorization check: Staff must be admin OR campaign owner
+  if (
+    req.user?.role !== "admin" &&
+    req.user?.role !== "hospital" &&
+    (req.user?.role as string) !== "bloodbank" &&
+    campaign.organizerUser?.toString() !== req.user?.sub
+  ) {
+    throw ApiError.forbidden("You do not have authorization to check in participants for this campaign.");
+  }
+
+  if (reg.status === "CANCELLED") {
+    throw ApiError.badRequest("Cannot check in a cancelled registration.");
+  }
+
+  if (reg.status === "CHECKED_IN" || reg.status === "ATTENDED" || reg.status === "COMPLETED") {
+    throw ApiError.conflict(`Participant is already checked in (Status: ${reg.status}). Attendance timestamp: ${reg.attendanceTimestamp?.toISOString()}`);
+  }
+
+  // STEP 1: CHECK-IN ONLY (Does NOT create VerifiedDonation)
   reg.status = "CHECKED_IN";
   reg.attendanceTimestamp = new Date();
   await reg.save();
 
   await Notification.create({
-    user: reg.user._id,
+    user: (reg.user as any)._id,
     title: "Check-in Recorded",
-    message: `Your check-in for "${(reg.campaign as any).title}" has been confirmed by camp staff.`,
+    message: `Your check-in for "${campaign.title}" has been recorded by camp staff.`,
     type: "info",
   });
 
-  return ApiResponse.success(res, reg, "Participant checked in successfully");
+  await AuditLog.create({
+    userId: req.user?.sub,
+    action: "CHECK_IN_RECORDED",
+    resource: `Registration:${reg.registrationCode}`,
+    details: { campaignId: campaign.campaignId, checkedInBy: req.user?.sub },
+    ipAddress: req.ip,
+  });
+
+  return ApiResponse.success(res, reg, "Participant checked in successfully!");
 });
 
 // ── 3. DONATION VERIFICATION & DIGITAL CERTIFICATE ──────────────────────────
@@ -423,8 +485,21 @@ export const verifyDonation = asyncHandler(async (req: Request, res: Response) =
     throw ApiError.notFound("Registration record not found");
   }
 
-  if (reg.status === "COMPLETED") {
-    throw ApiError.badRequest("This donation has already been verified and issued a certificate.");
+  // STRICT STATE MACHINE ENFORCEMENT:
+  // REGISTERED -> VERIFIED MUST FAIL!
+  // ONLY CHECKED_IN -> VERIFIED IS ALLOWED.
+  if (reg.status !== "CHECKED_IN" && reg.status !== "ATTENDED") {
+    throw ApiError.badRequest("Participant must complete venue check-in before donation verification.");
+  }
+
+  if (!reg.attendanceTimestamp) {
+    throw ApiError.badRequest("Attendance timestamp missing. Please complete check-in first.");
+  }
+
+  // Check duplicate verification
+  const existingVerified = await VerifiedDonation.findOne({ registration: reg._id });
+  if (existingVerified) {
+    throw ApiError.conflict("A verified donation record already exists for this registration.");
   }
 
   const verifierUser = await User.findById(req.user?.sub);
@@ -433,6 +508,17 @@ export const verifyDonation = asyncHandler(async (req: Request, res: Response) =
   }
 
   const campaign = reg.campaign as any;
+
+  // Verifier Permission check
+  if (
+    verifierUser.role !== "admin" &&
+    verifierUser.role !== "hospital" &&
+    (verifierUser.role as string) !== "bloodbank" &&
+    campaign.organizerUser?.toString() !== verifierUser._id.toString()
+  ) {
+    throw ApiError.forbidden("You do not have medical verifier authorization for this campaign.");
+  }
+
   const donationId = generateDonationId();
   const certId = generateCertificateId();
   const verificationToken = randomUUID();
@@ -483,7 +569,6 @@ export const verifyDonation = asyncHandler(async (req: Request, res: Response) =
     });
   }
 
-  // Generate Notification
   await Notification.create({
     user: reg.user._id,
     title: "🏆 Blood Donation Verified!",
@@ -491,15 +576,23 @@ export const verifyDonation = asyncHandler(async (req: Request, res: Response) =
     type: "success",
   });
 
+  await AuditLog.create({
+    userId: verifierUser._id,
+    action: "DONATION_VERIFIED",
+    resource: `Donation:${donationId}`,
+    details: { certificateId: certId, campaignId: campaign.campaignId },
+    ipAddress: req.ip,
+  });
+
   return ApiResponse.created(
     res,
-    { verifiedDonation, certificate },
+    { verifiedDonation, certificateId: certId },
     "Blood donation verified & digital certificate issued successfully!"
   );
 });
 
 export const getMyDonations = asyncHandler(async (req: Request, res: Response) => {
-  const donations = await VerifiedDonation.find({ user: req.user?.sub })
+  const donations = await VerifiedDonation.find({ user: req.user?.sub, status: "VERIFIED" })
     .populate("campaign", "title venue date organizerName")
     .sort({ donationDate: -1 });
 
@@ -507,7 +600,8 @@ export const getMyDonations = asyncHandler(async (req: Request, res: Response) =
 });
 
 export const getMyCertificates = asyncHandler(async (req: Request, res: Response) => {
-  const certificates = await DonationCertificate.find({ user: req.user?.sub })
+  const certificates = await DonationCertificate.find({ user: req.user?.sub, status: "VALID" })
+    .select("-verificationToken")
     .populate("verifiedDonation")
     .sort({ issueDate: -1 });
 
@@ -518,10 +612,21 @@ export const getCertificateById = asyncHandler(async (req: Request, res: Respons
   const { id } = req.params;
   const certificate = await DonationCertificate.findOne({
     $or: [{ certificateId: id.toUpperCase().trim() }, { _id: id }],
-  }).populate("user", "name email");
+  })
+    .select("-verificationToken")
+    .populate("user", "name email");
 
   if (!certificate) {
     throw ApiError.notFound("Certificate not found");
+  }
+
+  // IDOR Protection: Ensure user owns certificate OR is admin/staff
+  const userId = req.user?.sub;
+  const userRole = req.user?.role;
+  const ownerId = (certificate.user as any)._id?.toString() || certificate.user?.toString();
+
+  if (userRole !== "admin" && userRole !== "hospital" && (userRole as string) !== "bloodbank" && ownerId !== userId) {
+    throw ApiError.forbidden("You do not have permission to access this certificate.");
   }
 
   return ApiResponse.success(res, certificate, "Certificate details retrieved");
@@ -538,9 +643,9 @@ export const verifyCertificatePublic = asyncHandler(async (req: Request, res: Re
   const certificate = await DonationCertificate.findOne({
     $or: [
       { certificateId: certificateId.toUpperCase().trim() },
-      { verificationToken: certificateId.trim() },
+      { _id: certificateId.trim() },
     ],
-  }).populate("user", "name");
+  }).select("-verificationToken").populate("user", "name");
 
   if (!certificate) {
     return res.status(404).json({
@@ -596,10 +701,8 @@ export const revokeCertificate = asyncHandler(async (req: Request, res: Response
   };
   await certificate.save();
 
-  // Update VerifiedDonation record
   await VerifiedDonation.findByIdAndUpdate(certificate.verifiedDonation, { status: "REVOKED" });
 
-  // Audit log
   await AuditLog.create({
     userId: req.user.sub,
     action: "CERTIFICATE_REVOKED",
