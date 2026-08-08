@@ -34,6 +34,7 @@ export function Sidebar() {
 
   const navItems: NavItem[] = [
     { label: "Home", href: "/dashboard", icon: <Home className="h-4.5 w-4.5" /> },
+    { label: "Donation", href: "/donation", icon: <Droplet className="h-4.5 w-4.5 text-[#E5384D]" />, badge: "CAMPAIGNS" },
     { label: "Search", href: "/search", icon: <Search className="h-4.5 w-4.5" /> },
     { label: "Create Request", href: "/requests/new", icon: <PlusCircle className="h-4.5 w-4.5" /> },
     { label: "Notifications", href: "/notifications", icon: <Bell className="h-4.5 w-4.5" /> },

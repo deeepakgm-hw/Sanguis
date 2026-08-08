@@ -6,6 +6,7 @@ import { Notification } from "../models/Notification";
 import { UserPreferences } from "../models/UserPreferences";
 import { BloodBank } from "../models/BloodBank";
 import { Hospital } from "../models/Hospital";
+import { Campaign, DonationRegistration, VerifiedDonation, DonationCertificate } from "../models";
 import { BLOOD_TYPES, BloodType } from "../models/Donor";
 import { logger } from "./logger";
 import bcrypt from "bcryptjs";
@@ -204,7 +205,129 @@ export async function seedDatabase(): Promise<void> {
     }
   }
 
+  // 6. Seed Authorized Blood Donation Campaigns
+  await Promise.all([
+    Campaign.deleteMany({}),
+    DonationRegistration.deleteMany({}),
+    VerifiedDonation.deleteMany({}),
+    DonationCertificate.deleteMany({}),
+  ]);
+
+  const campaign1 = await Campaign.create({
+    campaignId: "BDC-2026-101",
+    title: "AIIMS National Lifesaving Blood Donation Camp",
+    description: "Join AIIMS Apex Trauma Center for a mega blood donation drive. All blood groups needed. Compliant with national health standards.",
+    organizerName: "AIIMS Apex Trauma Center & Blood Bank",
+    organizerType: "hospital",
+    organizerUser: hospitalDocs[0].user._id,
+    venue: "AIIMS Main Auditorium Hall A",
+    address: "Ansari Nagar, New Delhi, Delhi 110029",
+    city: "New Delhi",
+    location: { type: "Point", coordinates: [77.2100, 28.5672] },
+    date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000), // 3 days from now
+    startTime: "09:00 AM",
+    endTime: "05:00 PM",
+    contactPhone: "+91 11 2658 8500",
+    contactEmail: "camps@aiims.edu.in",
+    bloodGroupsRequired: ["A+", "A-", "B+", "B-", "O+", "O-"],
+    availableCapacity: 150,
+    currentRegistrationsCount: 12,
+    isVerifiedOrganizer: true,
+    status: "APPROVED",
+  });
+
+  const campaign2 = await Campaign.create({
+    campaignId: "BDC-2026-102",
+    title: "Apollo Bengaluru Emergency Plasma & Blood Drive",
+    description: "Annual voluntary blood donation drive organized by Apollo Hospitals in partnership with Rotary Club Bengaluru.",
+    organizerName: "Apollo Hospitals Emergency Blood Hub",
+    organizerType: "hospital",
+    organizerUser: hospitalDocs[1].user._id,
+    venue: "Apollo Hospital Convention Center",
+    address: "154/11 Bannerghatta Road, Bengaluru, Karnataka 560076",
+    city: "Bengaluru",
+    location: { type: "Point", coordinates: [77.5986, 12.8958] },
+    date: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000), // 5 days from now
+    startTime: "08:30 AM",
+    endTime: "04:30 PM",
+    contactPhone: "+91 80 2630 4050",
+    contactEmail: "bloodbank@apollo.com",
+    bloodGroupsRequired: ["O-", "AB-", "B-", "A-", "O+"],
+    availableCapacity: 200,
+    currentRegistrationsCount: 28,
+    isVerifiedOrganizer: true,
+    status: "APPROVED",
+  });
+
+  const campaign3 = await Campaign.create({
+    campaignId: "BDC-2026-103",
+    title: "Fortis Mumbai Youth & NSS Blood Donation Camp",
+    description: "Community blood drive empowering college students and NSS volunteers to save lives across Mumbai metro.",
+    organizerName: "Fortis Hospital & Research Center",
+    organizerType: "ngo",
+    organizerUser: hospitalDocs[2].user._id,
+    venue: "Mulund Community Center",
+    address: "Mulund Goregaon Link Rd, Mumbai, Maharashtra 400078",
+    city: "Mumbai",
+    location: { type: "Point", coordinates: [72.9431, 19.1678] },
+    date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000), // 2 days ago (completed)
+    startTime: "10:00 AM",
+    endTime: "06:00 PM",
+    contactPhone: "+91 22 6799 4100",
+    contactEmail: "donations@fortismumbai.org",
+    bloodGroupsRequired: ["A+", "B+", "O+", "AB+"],
+    availableCapacity: 100,
+    currentRegistrationsCount: 45,
+    isVerifiedOrganizer: true,
+    status: "COMPLETED",
+  });
+
+  // 7. Seed Sample Registrations, Verified Donation & Digital Certificate
+  const sampleUser = await User.findOne({ role: "donor" });
+  if (sampleUser) {
+    const reg = await DonationRegistration.create({
+      registrationCode: "SDN-84920412",
+      user: sampleUser._id,
+      campaign: campaign3._id,
+      bloodGroup: "O+",
+      status: "COMPLETED",
+      attendanceTimestamp: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+      qrCodeData: JSON.stringify({ regCode: "SDN-84920412", userName: sampleUser.name }),
+    });
+
+    const vDonation = await VerifiedDonation.create({
+      donationId: "DON-94820194",
+      user: sampleUser._id,
+      campaign: campaign3._id,
+      registration: reg._id,
+      verifierUser: hospitalDocs[2].user._id,
+      verifierRole: "Authorized Medical Verifier",
+      verifierOrganization: "Fortis Hospital & Research Center",
+      donationDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+      verificationTimestamp: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+      unitsDonated: 1,
+      status: "VERIFIED",
+      certificateId: "SANGUIS-BDC-94820194",
+    });
+
+    await DonationCertificate.create({
+      certificateId: "SANGUIS-BDC-94820194",
+      verificationToken: "verification-token-placeholder",
+      user: sampleUser._id,
+      donorName: sampleUser.name,
+      verifiedDonation: vDonation._id,
+      campaign: campaign3._id,
+      campaignTitle: campaign3.title,
+      authorizedOrganization: campaign3.organizerName,
+      venue: campaign3.venue,
+      donationDate: vDonation.donationDate,
+      issueDate: new Date(),
+      status: "VALID",
+    });
+  }
+
   logger.info(
-    `✅ Successfully seeded ${INDIAN_HOSPITALS.length} accredited hospitals, ${donorDocs.length} verified donors, ${requestDocs.length} emergency requests, and full blood bank inventory!`
+    `✅ Successfully seeded ${INDIAN_HOSPITALS.length} accredited hospitals, ${donorDocs.length} verified donors, ${requestDocs.length} emergency requests, authorized donation campaigns, and sample verified digital certificates!`
   );
 }
+
