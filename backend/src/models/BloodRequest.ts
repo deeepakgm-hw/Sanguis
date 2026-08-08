@@ -8,6 +8,7 @@ import { BLOOD_TYPES, BloodType, IGeoPoint, geoPointSchema } from "./Donor";
 // ---------------------------------------------------------------------------
 export type UrgencyLevel = "low" | "medium" | "high" | "critical";
 export type RequestStatus = "open" | "matched" | "fulfilled" | "cancelled" | "expired";
+export type DispatchState = "PENDING" | "DISPATCHING" | "ACCEPTED" | "FULFILLED" | "ESCALATED" | "EXPIRED";
 
 export interface IBloodRequest extends Document {
   _id: Types.ObjectId;
@@ -16,6 +17,10 @@ export interface IBloodRequest extends Document {
   urgencyLevel: UrgencyLevel;
   hospital: Types.ObjectId;          // → User (role: hospital)
   status: RequestStatus;
+  dispatchState: DispatchState;
+  escalationTier: number;
+  targetETAMinutes?: number;
+  reservedInventoryId?: Types.ObjectId;
   geoLocation: IGeoPoint;
   createdAt: Date;
   updatedAt: Date;
@@ -61,6 +66,17 @@ const bloodRequestSchema = new Schema<IBloodRequest>(
       default: "open",
       index: true,
     },
+
+    dispatchState: {
+      type: String,
+      enum: ["PENDING", "DISPATCHING", "ACCEPTED", "FULFILLED", "ESCALATED", "EXPIRED"],
+      default: "PENDING",
+      index: true,
+    },
+
+    escalationTier: { type: Number, default: 1 },
+    targetETAMinutes: { type: Number, default: null },
+    reservedInventoryId: { type: Schema.Types.ObjectId, ref: "InventoryReservation", default: null },
 
     // GeoJSON Point — required for $near / $geoWithin queries.
     // Callers must provide { type: "Point", coordinates: [lng, lat] }.

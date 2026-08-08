@@ -38,6 +38,10 @@ export interface IDonor extends Document {
   lastDonationDate: Date | null;
   medicalFlags: unknown;             // Schema.Types.Mixed — see comment below
   location: IGeoPoint;
+  approximateLocation?: IGeoPoint;
+  isLiveTracking: boolean;
+  shareLiveLocation: boolean;
+  lastLocationUpdate?: Date;
   trustScore: number;
   createdAt: Date;
   updatedAt: Date;
@@ -72,6 +76,11 @@ const donorSchema = new Schema<IDonor>(
     // GeoJSON Point — required for $near / $geoWithin queries.
     // Callers must provide { type: "Point", coordinates: [lng, lat] }.
     location: { type: geoPointSchema, required: true },
+    approximateLocation: { type: geoPointSchema, required: false },
+
+    isLiveTracking: { type: Boolean, default: false, index: true },
+    shareLiveLocation: { type: Boolean, default: true },
+    lastLocationUpdate: { type: Date, default: Date.now },
 
     // Populated by Teammate B's AI service via PATCH /api/v1/ai/trust-score —
     // do not compute here.
@@ -85,6 +94,7 @@ const donorSchema = new Schema<IDonor>(
 // Must be a 2dsphere index (not 2d) because we use GeoJSON geometry.
 // ---------------------------------------------------------------------------
 donorSchema.index({ location: "2dsphere" });
+donorSchema.index({ location: "2dsphere", isLiveTracking: 1, bloodType: 1 });
 
 // ---------------------------------------------------------------------------
 // Virtual: isEligible

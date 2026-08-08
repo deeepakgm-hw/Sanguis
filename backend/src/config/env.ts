@@ -35,6 +35,13 @@ export const env = cleanEnv(process.env, {
   GITHUB_CLIENT_ID: str({ default: "" }),
   GITHUB_CLIENT_SECRET: str({ default: "" }),
   GOOGLE_PLACES_API_KEY: str({ default: "" }),
+
+  MAP_PROVIDER: str({ default: "leaflet" }),
+  MAP_API_KEY: str({ default: "" }),
+  AI_PROVIDER: str({ default: "baseline" }),
+  AI_API_KEY: str({ default: "" }),
+  LOCATION_UPDATE_INTERVAL: num({ default: 10000 }),
+  LOCATION_MIN_DISTANCE_METERS: num({ default: 50 }),
 });
 
 // Fail fast: hackathon debugging time is precious, so we validate secrets
