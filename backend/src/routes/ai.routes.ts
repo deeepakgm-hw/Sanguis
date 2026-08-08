@@ -6,6 +6,7 @@ import { rankEligibleDonors } from "../ai/ranking/ranking.service";
 import { computeShortageForecast } from "../ai/forecast/shortageForecast.service";
 import { detectNetworkAnomalies } from "../ai/anomaly/anomaly.service";
 import { processCopilotQuery } from "../ai/copilot/copilot.service";
+import { parseBloodRequirementGemini } from "../ai/copilot/requirementParser.service";
 import { BloodType } from "../models/Donor";
 
 const router = Router();
@@ -48,7 +49,17 @@ router.get(
   })
 );
 
-// 4. Emergency Operations AI Copilot Endpoint (Protected)
+// 4. Natural Language Blood Requirement Parser Endpoint
+router.post(
+  "/parse-requirement",
+  asyncHandler(async (req: Request, res: Response) => {
+    const { prompt, history = [], currentState } = req.body;
+    const parsed = await parseBloodRequirementGemini(prompt || "", history, currentState);
+    return ApiResponse.success(res, parsed, "Natural language blood requirement parsed successfully");
+  })
+);
+
+// 5. Emergency Operations AI Copilot Endpoint (Protected)
 router.post(
   "/copilot",
   requireAuth,

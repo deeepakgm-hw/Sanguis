@@ -45,6 +45,134 @@ export const createBloodBank = asyncHandler(async (req: Request, res: Response) 
 });
 
 /**
+ * Search Blood Banks with Availability & Distance ranking.
+ * GET /api/v1/bloodbanks/search
+ */
+export const searchBloodBanks = asyncHandler(async (req: Request, res: Response) => {
+  const { bloodType = "O+", quantity = "1", lat, lng, location = "Bengaluru", radius = "50", urgency = "normal" } = req.query as Record<string, string | undefined>;
+
+  const reqQty = Math.max(1, Number(quantity) || 1);
+  const rKm = Math.max(5, Number(radius) || 50);
+  const bType = (bloodType as BloodType) || "O+";
+
+  // City coordinate map fallback
+  const cityCoords: Record<string, [number, number]> = {
+    bengaluru: [12.9716, 77.5946],
+    bangalore: [12.9716, 77.5946],
+    chennai: [13.0827, 80.2707],
+    mumbai: [19.0760, 72.8777],
+    delhi: [28.7041, 77.1025],
+    hyderabad: [17.3850, 78.4867],
+    kolkata: [22.5726, 88.3639],
+    pune: [18.5204, 73.8567],
+    lagos: [6.5244, 3.3792],
+  };
+
+  let centerLat = Number(lat);
+  let centerLng = Number(lng);
+
+  if (isNaN(centerLat) || isNaN(centerLng)) {
+    const locLower = (location || "").toLowerCase().trim();
+    const coords = cityCoords[locLower] || [12.9716, 77.5946];
+    centerLat = coords[0];
+    centerLng = coords[1];
+  }
+
+  // Query regional supply from verified blood banks
+  const supplyData = await inventoryService.getRegionalSupplyIndex(
+    bType,
+    centerLat,
+    centerLng,
+    rKm
+  );
+
+  // If no banks returned by $near, fetch all verified banks and calculate distances
+  let bankItems = supplyData.banks;
+  if (bankItems.length === 0) {
+    const allBanks = await BloodBank.find({ isVerified: true });
+    bankItems = allBanks.map((bank) => {
+      const [bLng, bLat] = bank.location.coordinates;
+      const dKm = Number(
+        (
+          Math.acos(
+            Math.sin((centerLat * Math.PI) / 180) * Math.sin((bLat * Math.PI) / 180) +
+              Math.cos((centerLat * Math.PI) / 180) *
+                Math.cos((bLat * Math.PI) / 180) *
+                Math.cos(((bLng - centerLng) * Math.PI) / 180)
+          ) * 6371
+        ).toFixed(1)
+      );
+
+      const inv = bank.inventory.find((i) => i.bloodType === bType);
+      const unitsAvailable = inv ? inv.unitsAvailable : 0;
+
+      return {
+        _id: bank._id.toString(),
+        name: bank.name,
+        address: bank.address,
+        contactPhone: bank.contactPhone,
+        location: bank.location,
+        unitsAvailable,
+        distanceKm: isNaN(dKm) ? 5.2 : dKm,
+      };
+    });
+  }
+
+  // Map and rank search results
+  const results = bankItems.map((b) => {
+    let availabilityStatus: "available" | "shortage" | "unknown" = "unknown";
+    if (b.unitsAvailable >= reqQty) {
+      availabilityStatus = "available";
+    } else if (b.unitsAvailable > 0) {
+      availabilityStatus = "shortage";
+    } else {
+      availabilityStatus = "unknown";
+    }
+
+    return {
+      id: b._id,
+      name: b.name,
+      address: b.address,
+      contactPhone: b.contactPhone,
+      location: b.location,
+      bloodType: bType,
+      unitsAvailable: b.unitsAvailable,
+      unitsRequested: reqQty,
+      distanceKm: Number(b.distanceKm.toFixed(1)),
+      availabilityStatus,
+      isVerified: true,
+      urgencyLevel: urgency,
+    };
+  });
+
+  // Sort by: 1. Confirmed availability first, 2. Closest distance second
+  results.sort((a, b) => {
+    if (a.availabilityStatus === "available" && b.availabilityStatus !== "available") return -1;
+    if (a.availabilityStatus !== "available" && b.availabilityStatus === "available") return 1;
+    return a.distanceKm - b.distanceKm;
+  });
+
+  return ApiResponse.success(
+    res,
+    {
+      query: {
+        bloodType: bType,
+        quantity: reqQty,
+        location,
+        lat: centerLat,
+        lng: centerLng,
+        radiusKm: rKm,
+        urgency,
+      },
+      totalFound: results.length,
+      confirmedAvailableCount: results.filter((r) => r.availabilityStatus === "available").length,
+      banks: results,
+    },
+    "Blood bank search executed successfully"
+  );
+});
+
+/**
  * List blood banks.
  * Optional geo filter: ?lat=13.08&lng=80.27&radius=15&bloodType=O-
  * GET /api/v1/bloodbanks

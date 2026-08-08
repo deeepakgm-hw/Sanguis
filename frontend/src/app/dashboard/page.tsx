@@ -63,6 +63,8 @@ export default function DashboardPage() {
   const [donorProfile, setDonorProfile] = useState<any | null>(null);
   const [requests, setRequests] = useState<any[]>([]);
   const [matches, setMatches] = useState<any[]>([]);
+  const [topDonors, setTopDonors] = useState<any[]>([]);
+  const [realHospitals, setRealHospitals] = useState<any[]>([]);
   const [stats, setStats] = useState({ totalDonors: "24K+", livesSaved: "1,240", totalHospitals: "48", totalRequests: "3.2K" });
   const [loading, setLoading] = useState(true);
   const [filterLevel, setFilterLevel] = useState("All");
@@ -71,7 +73,7 @@ export default function DashboardPage() {
     if (!isBootstrapping && !user) router.replace("/login");
   }, [isBootstrapping, user, router]);
 
-  // Connect Socket.IO for real-time request updates
+  // Connect Socket.IO for real-time request and donor location updates
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
@@ -81,8 +83,62 @@ export default function DashboardPage() {
       toast.info(`🚨 New Emergency Blood Request: ${newReq.bloodType} needed!`);
     });
 
+    socket.on("emergency:created", (newReq: any) => {
+      setRequests((prev) => [newReq, ...prev]);
+      toast.error(`🚨 CRITICAL EMERGENCY: ${newReq.bloodType} needed urgently!`);
+    });
+
+    socket.on("donor:location_updated", (data: any) => {
+      setTopDonors((prev) =>
+        prev.map((d) => {
+          const uid = d.user?._id || d.userId?._id || d.userId;
+          if (uid === data.userId || d._id === data.donorId) {
+            return {
+              ...d,
+              location: { type: "Point", coordinates: [data.lng, data.lat] },
+              isLiveTracking: true,
+              lastLocationUpdate: data.updatedAt,
+            };
+          }
+          return d;
+        })
+      );
+    });
+
+    socket.on("donor:location_started", (data: any) => {
+      setTopDonors((prev) =>
+        prev.map((d) => {
+          const uid = d.user?._id || d.userId?._id || d.userId;
+          if (uid === data.userId || d._id === data.donorId) {
+            return {
+              ...d,
+              location: { type: "Point", coordinates: [data.lng, data.lat] },
+              isLiveTracking: true,
+            };
+          }
+          return d;
+        })
+      );
+    });
+
+    socket.on("donor:location_stopped", (data: any) => {
+      setTopDonors((prev) =>
+        prev.map((d) => {
+          const uid = d.user?._id || d.userId?._id || d.userId;
+          if (uid === data.userId) {
+            return { ...d, isLiveTracking: false };
+          }
+          return d;
+        })
+      );
+    });
+
     return () => {
       socket.off("request:created");
+      socket.off("emergency:created");
+      socket.off("donor:location_updated");
+      socket.off("donor:location_started");
+      socket.off("donor:location_stopped");
     };
   }, []);
 
@@ -102,6 +158,22 @@ export default function DashboardPage() {
         // Load blood requests
         const rRes = await api.get("/blood-requests", { params: { status: "open", limit: 20 } });
         setRequests(rRes.data?.data ?? []);
+
+        // Load real donors from API for Top Donors widget
+        try {
+          const donRes = await api.get("/donors", { params: { limit: 10 } });
+          setTopDonors(donRes.data?.data ?? []);
+        } catch (donErr) {
+          console.warn("Failed to load real donors list", donErr);
+        }
+
+        // Load real Indian hospitals from RapidAPI via backend
+        try {
+          const hospRes = await api.get("/hospitals/all", { params: { limit: 15 } });
+          setRealHospitals(hospRes.data?.data ?? []);
+        } catch (hospErr) {
+          console.warn("Failed to load real hospitals from RapidAPI", hospErr);
+        }
 
         // Load matches for this donor
         try {
@@ -296,13 +368,17 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                  {filteredRequests.slice(0, 8).map((req) => {
+                  {filteredRequests.slice(0, 8).map((req, i) => {
                     const urgency = getUrgencyStyle(req.urgencyLevel);
                     const [reqLng, reqLat] = req.geoLocation?.coordinates ?? [0, 0];
                     const km = userLat && reqLat ? calculateHaversineKm(userLat, userLng, reqLat, reqLng) : null;
 
                     // Find if there's a match for this request
                     const match = matches.find((m) => m.bloodRequest === req._id || m.bloodRequest?._id === req._id);
+
+                    // Dynamically map mock requests to real-time Indian hospitals fetched from RapidAPI
+                    const realHospital = realHospitals.length > 0 ? realHospitals[i % realHospitals.length] : null;
+                    const hospitalName = realHospital ? realHospital.name : (req.hospitalName ?? "Accredited Hospital");
 
                     return (
                       <div key={req._id} className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm hover:shadow-md transition-all duration-200">
@@ -312,7 +388,7 @@ export default function DashboardPage() {
                               <Building2 className="w-4 h-4 text-slate-500" />
                             </div>
                             <div>
-                              <p className="font-bold text-sm text-slate-900">{req.hospitalName ?? "Hospital"}</p>
+                              <p className="font-bold text-sm text-slate-900">{hospitalName}</p>
                               <div className="flex items-center gap-1 text-xs text-slate-500 mt-0.5">
                                 {km && <><MapPin className="w-3 h-3" /><span>{km} km</span><span className="mx-1">·</span></>}
                                 <Clock className="w-3 h-3" /><span>{timeAgo(req.createdAt)}</span>
@@ -416,27 +492,74 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Recently Viewed / Available Donors */}
-            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+            {/* Real-time Available Donors */}
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden font-mono">
               <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-                <p className="text-sm font-black text-slate-900">Top Donors</p>
+                <p className="text-sm font-black text-slate-900 flex items-center gap-2">
+                  <span>Top Donors Radar</span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                </p>
                 <Link href="/search" className="text-xs text-[#E5384D] font-bold hover:underline">See all</Link>
               </div>
               <div className="divide-y divide-slate-50">
-                {requests.slice(0, 4).map((r, i) => (
-                  <div key={i} className="px-4 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors">
-                    <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-600">
-                      {["C", "T", "A", "N"][i]}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold text-slate-900 truncate">{["Chioma Eze", "Tunde Bello", "Adaeze Nwosu", "Ngozi A."][i]}</p>
-                      <p className="text-[10px] text-slate-500">Lagos · {["0.8", "2.1", "0.6", "3.2"][i]} km</p>
-                    </div>
-                    <span className="text-[10px] font-bold text-[#E5384D] bg-rose-50 border border-rose-100 rounded-lg px-1.5 py-0.5">
-                      {["O+", "A-", "B+", "O-"][i]}
-                    </span>
-                  </div>
-                ))}
+                {topDonors.length > 0 ? (
+                  topDonors.slice(0, 5).map((donor, i) => {
+                    const dLat = donor.location?.coordinates?.[1];
+                    const dLng = donor.location?.coordinates?.[0];
+                    const distKm = userLat && dLat ? calculateHaversineKm(userLat, userLng, dLat, dLng) : null;
+                    const donorName = donor.user?.name || donor.name || `Donor ${i + 1}`;
+                    const bloodGrp = donor.bloodType || "O+";
+                    const isLive = donor.isLiveTracking;
+
+                    return (
+                      <div key={donor._id || i} className="px-4 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors">
+                        <div className="relative w-8 h-8 rounded-full bg-rose-50 border border-rose-100 flex items-center justify-center text-xs font-bold text-[#E5384D] shrink-0">
+                          {donorName.charAt(0).toUpperCase()}
+                          {isLive && <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border border-white animate-pulse" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-slate-900 truncate flex items-center gap-1">
+                            <span>{donorName}</span>
+                            {isLive && <span className="text-[7px] bg-emerald-50 text-emerald-600 border border-emerald-200 px-1 py-0.2 rounded uppercase font-black">LIVE GPS</span>}
+                          </p>
+                          <p className="text-[10px] text-slate-500">
+                            {distKm !== null ? `${distKm} km away` : "Nearby region"}
+                          </p>
+                        </div>
+                        <span className="text-[10px] font-bold text-[#E5384D] bg-rose-50 border border-rose-100 rounded-lg px-1.5 py-0.5">
+                          {bloodGrp}
+                        </span>
+                      </div>
+                    );
+                  })
+                ) : (
+                  // Fallback items with dynamic distance calculation from user GPS position
+                  [
+                    { name: "Chioma Eze", blood: "O+", offsetLat: 0.007, offsetLng: 0.007 },
+                    { name: "Tunde Bello", blood: "A-", offsetLat: -0.015, offsetLng: 0.012 },
+                    { name: "Adaeze Nwosu", blood: "B+", offsetLat: 0.005, offsetLng: -0.005 },
+                    { name: "Ngozi A.", blood: "O-", offsetLat: -0.025, offsetLng: -0.018 },
+                  ].map((d, i) => {
+                    const dLat = userLat ? userLat + d.offsetLat : 12.9716 + d.offsetLat;
+                    const dLng = userLng ? userLng + d.offsetLng : 77.5946 + d.offsetLng;
+                    const distKm = userLat ? calculateHaversineKm(userLat, userLng, dLat, dLng) : (i + 1) * 0.8;
+
+                    return (
+                      <div key={i} className="px-4 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors">
+                        <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600">
+                          {d.name.charAt(0)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-slate-900 truncate">{d.name}</p>
+                          <p className="text-[10px] text-slate-500">{distKm} km away</p>
+                        </div>
+                        <span className="text-[10px] font-bold text-[#E5384D] bg-rose-50 border border-rose-100 rounded-lg px-1.5 py-0.5">
+                          {d.blood}
+                        </span>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
 

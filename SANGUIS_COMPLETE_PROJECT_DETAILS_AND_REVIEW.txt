@@ -1,0 +1,304 @@
+================================================================================
+                    SANGUIS — COMPLETE MASTER PROJECT DETAILS
+               AI-Powered Emergency Blood Dispatch & Plasma Network
+================================================================================
+
+1. EXECUTIVE SUMMARY & PROJECT OVERVIEW
+--------------------------------------------------------------------------------
+Project Name    : Sanguis
+Tagline         : Connect Donors, Respond to Emergencies, Save Lives in Real-Time
+Target Audience : Emergency Blood Donors, Hospitals, Trauma Centers, Blood Banks, Recipients
+Repository URL  : https://github.com/deeepakgm-hw/Sanguis
+Status          : Production-Ready, 100% Implemented, Security-Hardened & Tested
+
+Sanguis is an enterprise-grade, real-time emergency blood dispatch, donation campaign management, 
+and regional shortage forecasting platform. It bridges the critical time gap between hospital blood 
+emergencies and eligible local donors through real-time geospatial tracking, explainable AI 
+candidate ranking, atomic donation campaign management, and tamper-proof digital certificates.
+
+Key Value Propositions:
+- Real-Time Geospatial Matching: Calculates live Haversine GPS distances to match hospital requests 
+  with nearby eligible donors within minutes.
+- Predictive Shortage Forecaster: Analyzes 14-day demand trends against regional inventory and donor 
+  density to calculate shortage risk tiers (Healthy, Watch, Critical).
+- Starvation-Free Priority Queue: Computes a multi-factor priority score (Urgency + Wait Time + Units 
+  Needed + Verification Bonus) up to 205 points so low-urgency requests do not suffer starvation.
+- Canonical AABB Eligibility Engine: Enforces the 90-day whole-blood medical interval alongside 
+  voluntary donor blackout period management.
+- Authorized Donation Campaigns: Full campaign lifecycle with atomic slot booking, two-step venue 
+  check-in, medical verification, digital certificates, and public QR verification.
+- Production Authentication & SMTP OTP: Direct 6-digit OTP verification via Gmail SMTP with bcrypt 
+  password/OTP hashing, 5-minute expiration, and rate-limited resend controls.
+
+================================================================================
+2. TECHNICAL ARCHITECTURE & STACK
+================================================================================
+
+FRONTEND ARCHITECTURE (Location: /frontend)
+- Framework        : Next.js 14 (App Router architecture with TypeScript)
+- UI & Styling     : Tailwind CSS + Lucide Icons + Custom Glassmorphism System
+- State & Forms    : React 18 hooks, React Hook Form, Zod Schema Validation, Zustand Auth Store
+- Maps & Visuals   : Leaflet v1.9 + CartoDB Dark Matter tiles, qrcode.react (<QRCodeSVG>)
+- API Client       : Axios instance with request/response interceptors & token refresh logic
+- Notifications    : Sonner Toast Notifications
+
+BACKEND ARCHITECTURE (Location: /backend)
+- Runtime & Server : Node.js (v20+) with Express.js & TypeScript
+- Database ODM     : Mongoose ODM (MongoDB Server & MongoMemoryServer fallback for zero-setup dev)
+- Caching / Rate   : IORedis / Mock Redis fallback with express-rate-limit
+- Real-Time Events : Socket.io WebSocket server
+- External API     : RapidAPI Indian Hospitals API (`GET https://indian-hospitals.p.rapidapi.com/hospitals/all`)
+- Security Layer   : OWASP Helmet, HPP, XSS Sanitizer, Express Mongo Sanitize, Bcrypt/Argon2id Hashing,
+                     Fine-Grained RBAC Permission Guards, IDOR Protection
+
+================================================================================
+3. COMPLETE REPOSITORY FILE STRUCTURE
+================================================================================
+
+backend/
+├── src/
+│   ├── ai/
+│   │   ├── anomaly/
+│   │   ├── copilot/
+│   │   ├── eta/
+│   │   ├── forecast/
+│   │   └── ranking/
+│   ├── config/
+│   │   ├── env.ts
+│   │   ├── permissions.ts
+│   │   ├── redis.ts
+│   │   └── socket.ts
+│   ├── controllers/
+│   │   ├── ai.controller.ts
+│   │   ├── auth.controller.ts
+│   │   ├── bloodRequest.controller.ts
+│   │   ├── donation.controller.ts
+│   │   ├── donor.controller.ts
+│   │   ├── events.controller.ts
+│   │   ├── hospital.controller.ts
+│   │   └── seed.controller.ts
+│   ├── middlewares/
+│   │   ├── auth.ts
+│   │   ├── error.middleware.ts
+│   │   ├── rbac.ts
+│   │   └── validate.ts
+│   ├── models/
+│   │   ├── AuditLog.ts
+│   │   ├── BloodBank.ts
+│   │   ├── BloodRequest.ts
+│   │   ├── Campaign.ts
+│   │   ├── DonationCertificate.ts
+│   │   ├── DonationRegistration.ts
+│   │   ├── Donor.ts
+│   │   ├── DonorAvailability.ts
+│   │   ├── Hospital.ts
+│   │   ├── Match.ts
+│   │   ├── Notification.ts
+│   │   ├── PendingRegistration.ts
+│   │   ├── User.ts
+│   │   ├── UserPreferences.ts
+│   │   ├── VerifiedDonation.ts
+│   │   └── index.ts
+│   ├── routes/
+│   │   ├── ai.routes.ts
+│   │   ├── auth.routes.ts
+│   │   ├── bloodRequest.routes.ts
+│   │   ├── donation.routes.ts
+│   │   ├── donor.routes.ts
+│   │   ├── hospital.routes.ts
+│   │   └── seed.routes.ts
+│   ├── services/
+│   │   ├── dispatch.service.ts
+│   │   ├── eligibility.service.ts
+│   │   ├── forecast.service.ts
+│   │   ├── hospital.service.ts
+│   │   ├── matching.service.ts
+│   │   ├── priority.service.ts
+│   │   └── ranking.service.ts
+│   ├── utils/
+│   │   ├── ApiError.ts
+│   │   ├── ApiResponse.ts
+│   │   ├── asyncHandler.ts
+│   │   └── logger.ts
+│   ├── app.ts
+│   └── server.ts
+
+frontend/
+├── src/
+│   ├── app/
+│   │   ├── certificate/verify/[id]/page.tsx
+│   │   ├── command-center/page.tsx
+│   │   ├── demo/page.tsx
+│   │   ├── donation/
+│   │   │   ├── certificates/[id]/page.tsx
+│   │   │   └── page.tsx
+│   │   ├── donor/dashboard/page.tsx
+│   │   ├── login/page.tsx
+│   │   ├── register/page.tsx
+│   │   ├── requests/[id]/page.tsx
+│   │   ├── search/page.tsx
+│   │   ├── verify-email/page.tsx
+│   │   └── page.tsx
+│   ├── components/
+│   │   ├── map/LiveDispatchMap.tsx
+│   │   ├── ui/sidebar.tsx
+│   │   └── navbar.tsx
+│   ├── hooks/
+│   │   ├── useLiveLocation.ts
+│   │   └── useSocketDispatch.ts
+│   ├── lib/
+│   │   └── api.ts
+│   └── store/
+│       └── auth.store.ts
+
+================================================================================
+4. CORE ALGORITHMS & DOMAIN LOGIC
+================================================================================
+
+A. AABB Medical Re-eligibility & Voluntary Availability Engine
+--------------------------------------------------------------
+- Canonical Interval: WHOLE_BLOOD_ELIGIBILITY_DAYS = 90.
+- Formula:
+  nextEligibleDate = lastDonationDate + (90 * 24 * 60 * 60 * 1000)
+  daysUntilEligible = Math.ceil((nextEligibleDate - now) / 86400000)
+- Voluntary Availability: Donors define temporary unavailability windows (travel, illness).
+- Combined Matching Check: Donor is eligible ONLY IF:
+  1) Medical interval (90 days) has elapsed.
+  2) No active voluntary blackout window overlaps with current timestamp.
+
+B. Multi-Factor Priority Dispatch Scoring System
+--------------------------------------------------
+Formula: Total Priority Score = Urgency Score + Wait-Time Score + Shortfall Score + Verification Bonus
+- Urgency Score     : Critical = 100 | High = 60 | Medium = 30 | Low = 10
+- Wait-Time Score   : +3 points per hour waiting, capped at 50 points (~17 hours) to prevent starvation.
+- Shortfall Score   : +4 points per unit needed, capped at 40 points (≥10 units).
+- Verification Bonus: +15 points for verified hospital requesters.
+- Max Possible Score: 205 points.
+
+C. AI Shortage Forecasting Engine
+---------------------------------
+- Analysis Window: 14 days lookback for regional demand rate.
+- Calculation:
+  1) projectedWeeklyDemand = (recentRequestsInRadius / 14) * 7
+  2) combinedSupply = bankInventoryUnitsInRadius + eligibleDonorCountInRadius
+  3) ratio = combinedSupply / max(projectedWeeklyDemand, 1)
+- Risk Tiers:
+  - Ratio ≥ 3.0 → HEALTHY ("Stable Supply")
+  - 1.5 ≤ Ratio < 3.0 → WATCH ("Monitor Closely")
+  - Ratio < 1.5 → CRITICAL ("Critical Shortage")
+
+D. Geospatial Matching Engine
+-----------------------------
+- Calculates Haversine distance in kilometers between hospital GeoJSON Point coordinates and candidate donor coordinates.
+- Filters candidates by blood type compatibility (e.g. O- universal donor, exact match preference).
+
+================================================================================
+5. DATABASE SCHEMAS & MODELS
+================================================================================
+
+1. User Model (User.ts)
+   - _id, name, email (unique), phone (unique, sparse), password, role ('donor'|'hospital'|'bloodbank'|'user'|'admin'),
+     isEmailVerified, googleId, githubId, createdAt, updatedAt.
+
+2. Donor Model (Donor.ts)
+   - userId (ref User), bloodType ('A+'|'A-'|'B+'|'B-'|'AB+'|'AB-'|'O+'|'O-'), lastDonationDate,
+     medicalFlags, location (GeoJSON Point: [lng, lat]), trustScore (0-100), createdAt, updatedAt.
+
+3. Campaign Model (Campaign.ts)
+   - campaignId (unique), title, description, organizerName, organizerType ('hospital'|'bloodbank'|'ngo'|'admin'),
+     organizerUser (ref User), venue, address, city, location (GeoJSON Point), date, startTime, endTime,
+     contactPhone, contactEmail, bloodGroupsRequired, availableCapacity, currentRegistrationsCount,
+     isVerifiedOrganizer, status ('DRAFT'|'PENDING_APPROVAL'|'APPROVED'|'REJECTED'|'CANCELLED'|'COMPLETED').
+
+4. DonationRegistration Model (DonationRegistration.ts)
+   - registrationCode (unique, e.g. SDN-84920412), user (ref User), donor (ref Donor), campaign (ref Campaign),
+     bloodGroup, status ('CONFIRMED'|'CHECKED_IN'|'ATTENDED'|'COMPLETED'|'CANCELLED'), attendanceTimestamp, qrCodeData.
+
+5. VerifiedDonation Model (VerifiedDonation.ts)
+   - donationId (unique, e.g. DON-94820194), user (ref User), donor (ref Donor), campaign (ref Campaign),
+     registration (ref DonationRegistration), verifierUser (ref User), verifierRole, verifierOrganization,
+     donationDate, verificationTimestamp, unitsDonated, status ('VERIFIED'|'REVOKED'), certificateId, notes.
+
+6. DonationCertificate Model (DonationCertificate.ts)
+   - certificateId (unique, e.g. SANGUIS-BDC-94820194), verificationToken, user (ref User), donorName,
+     verifiedDonation (ref VerifiedDonation), campaign (ref Campaign), campaignTitle, authorizedOrganization,
+     venue, donationDate, issueDate, status ('VALID'|'REVOKED'), revocationDetails.
+
+7. AuditLog Model (AuditLog.ts)
+   - userId (ref User), action, resource, details, ipAddress, timestamp.
+
+================================================================================
+6. WORKFLOW & SECURITY ENFORCEMENT MATRIX
+================================================================================
+
+AUTHORIZED CAMPAIGN WORKFLOW:
+  Organized Submission -> Admin Approval -> Donor Pass Registration (SDN-XXXXXXXX)
+  -> Venue Check-in Step 1 (CHECKED_IN) -> Medical Verification Step 2 (VERIFIED)
+  -> Digital Certificate Generation (SANGUIS-BDC-XXXXXXXX) -> Public QR Verification -> Admin Revocation
+
+SECURITY AUDIT HIGHLIGHTS:
+- RBAC Guarding: Check-in and verification endpoints protected with fine-grained permissions
+  (`campaign:checkin`, `donation:verify`). Ordinary donors cannot trigger check-in or verification.
+- State Machine Integrity: Attempting to verify a registration without venue check-in fails with HTTP 400.
+- Atomic Capacity: Race conditions prevented using Mongoose `$expr` atomic updates:
+  `findOneAndUpdate({ _id: id, $expr: { $lt: ["$currentRegistrationsCount", "$availableCapacity"] } }, { $inc: { currentRegistrationsCount: 1 } })`
+- IDOR Protection: Certificate detail endpoint verifies `ownerId === req.user.sub` or elevated staff role.
+- Token Scrubbing: Secret `verificationToken` excluded from public API payloads (`.select("-verificationToken")`).
+- Machine-Readable QR Engine: `<QRCodeSVG>` renders check-in codes (`SDN-XXXXXXXX`) and public certificate verification URLs (`/certificate/verify/<id>`) without exposing private PII.
+
+================================================================================
+7. REST API REGISTRY & ENDPOINTS
+================================================================================
+
+AUTHENTICATION & OTP (`/api/v1/auth`)
+- POST   /api/v1/auth/register       : Create pending registration & send 6-digit SMTP OTP.
+- POST   /api/v1/auth/verify-otp     : Verify 6-digit OTP code, promote to User, issue JWT access/refresh tokens.
+- POST   /api/v1/auth/resend-otp     : Resend 6-digit OTP email with 60s rate-limit cooldown.
+- POST   /api/v1/auth/login          : User sign in with email/password.
+- GET    /api/v1/auth/google         : Google OAuth authentication endpoint.
+- GET    /api/v1/auth/github         : GitHub OAuth authentication endpoint.
+- POST   /api/v1/auth/logout         : Clear authentication cookies & revoke refresh token.
+
+DONATION CAMPAIGNS & CERTIFICATES (`/api/v1/donations`)
+- GET    /api/v1/donations/campaigns                  : Browse donation campaigns.
+- POST   /api/v1/donations/campaigns                  : Submit authorized campaign.
+- POST   /api/v1/donations/campaigns/:id/approve      : Approve pending campaign (Admin).
+- POST   /api/v1/donations/campaigns/:id/reject       : Reject pending campaign (Admin).
+- POST   /api/v1/donations/campaigns/:id/register     : Register for camp pass (Donor).
+- POST   /api/v1/donations/registrations/check-in     : Venue participant check-in (Step 1).
+- POST   /api/v1/donations/registrations/verify       : Verify donation & issue certificate (Step 2).
+- GET    /api/v1/donations/certificates/my            : List donor digital certificates.
+- GET    /api/v1/donations/certificates/:id           : Get certificate details (IDOR Protected).
+- GET    /api/v1/donations/certificates/verify/:id    : Public QR certificate verification endpoint.
+- POST   /api/v1/donations/certificates/:id/revoke    : Revoke digital certificate (Admin).
+
+HOSPITALS & DIRECTORY (`/api/v1/hospitals`)
+- GET    /api/v1/hospitals/nearby                     : Find nearby hospitals by GeoJSON radius.
+- GET    /api/v1/hospitals/all                        : RapidAPI Indian Hospitals dataset endpoint.
+
+================================================================================
+8. RUNNING THE APPLICATION LOCALLY
+================================================================================
+
+Backend Setup:
+1. Navigate to backend directory: cd backend
+2. Install dependencies: npm install
+3. Start backend server: npm run dev
+   (Server runs on http://localhost:5000)
+
+Frontend Setup:
+1. Navigate to frontend directory: cd frontend
+2. Install dependencies: npm install
+3. Start frontend dev server: npm run dev
+   (Application runs on http://localhost:3000)
+
+Key Live URLs:
+- Landing Page             : http://localhost:3000
+- Emergency Command Center : http://localhost:3000/command-center
+- Hackathon Judge Demo     : http://localhost:3000/demo
+- Donation Dashboard       : http://localhost:3000/donation
+- API Health Status        : http://localhost:5000/api/v1/health
+
+================================================================================
+                      END OF MASTER PROJECT DOCUMENTATION
+================================================================================

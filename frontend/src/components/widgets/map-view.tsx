@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { Navigation, MapPin, CheckCircle2, Loader2, Compass, ExternalLink } from "lucide-react";
+import { Navigation, MapPin, CheckCircle2, Loader2, Compass, ExternalLink, Layers, RotateCcw } from "lucide-react";
 import { api } from "@/lib/api";
 
 export interface MapMarker {
@@ -56,6 +56,11 @@ export function MapView({
   const [hasGPS, setHasGPS] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [detectedItems, setDetectedItems] = useState<MapMarker[]>(propMarkers);
+
+  // 3D Perspective Map Controls State
+  const [is3DView, setIs3DView] = useState(true);
+  const [pitchDeg, setPitchDeg] = useState(45);
+  const [bearingDeg, setBearingDeg] = useState(0);
 
   // Reverse Geocoding (GPS Coords -> Street Address via Nominatim)
   const reverseGeocode = async (lat: number, lng: number) => {
@@ -298,9 +303,9 @@ export function MapView({
   }, [detectedItems, onMarkerClick]);
 
   return (
-    <div className="w-full h-full relative rounded-2xl overflow-hidden shadow-inner border border-slate-200 bg-slate-100 flex flex-col">
+    <div className="w-full h-full relative rounded-2xl overflow-hidden shadow-inner border border-slate-200 bg-slate-100 flex flex-col font-mono">
       {/* ── GOOGLE MAPS STYLE LIVE LOCATION CARD (TOP BAR) ── */}
-      <div className="absolute top-2 left-2 right-12 z-30 bg-white/95 backdrop-blur-md border border-slate-200 rounded-2xl px-3 py-2 shadow-lg flex items-center justify-between gap-2">
+      <div className="absolute top-2 left-2 right-2 z-30 bg-white/95 backdrop-blur-md border border-slate-200 rounded-2xl px-3 py-2 shadow-lg flex items-center justify-between gap-2">
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="w-8 h-8 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center shrink-0">
             <MapPin className="w-4 h-4 text-blue-600 fill-blue-600 animate-bounce" />
@@ -319,6 +324,30 @@ export function MapView({
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
+          {/* 2D/3D Toggle Button */}
+          <button
+            onClick={() => setIs3DView(!is3DView)}
+            className={`px-2.5 py-1.5 rounded-xl border text-[10px] font-bold uppercase transition-all flex items-center gap-1 shadow-sm ${
+              is3DView
+                ? "bg-rose-500/10 text-rose-600 border-rose-500/30"
+                : "bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200"
+            }`}
+            title="Toggle 2D / 3D Perspective Map"
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span>{is3DView ? "3D (45°)" : "2D"}</span>
+          </button>
+
+          {is3DView && (
+            <button
+              onClick={() => setBearingDeg((b) => (b + 45) % 360)}
+              className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[10px] transition-all flex items-center gap-1"
+              title={`Rotate Bearing (${bearingDeg}°)`}
+            >
+              <Compass className="w-3.5 h-3.5 text-rose-500" />
+            </button>
+          )}
+
           <button
             onClick={handleRecenter}
             className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[10px] transition-all flex items-center gap-1"
@@ -339,8 +368,18 @@ export function MapView({
         </div>
       </div>
 
-      {/* Real Leaflet OpenStreetMap Container */}
-      <div ref={containerRef} className="w-full h-full z-10" />
+      {/* 3D Perspective Transform Container */}
+      <div
+        className="w-full h-full transition-transform duration-500 ease-out"
+        style={{
+          transform: is3DView
+            ? `perspective(1000px) rotateX(${pitchDeg}deg) rotateZ(${bearingDeg}deg) scale(1.08)`
+            : "none",
+          transformOrigin: "center center",
+        }}
+      >
+        <div ref={containerRef} className="w-full h-full z-10" />
+      </div>
     </div>
   );
 }

@@ -5,6 +5,8 @@ import { env } from "./env";
 import { logger } from "../utils/logger";
 import { AccessTokenPayload } from "../middlewares/auth";
 import { Donor } from "../models/Donor";
+import { LocationService } from "../services/location.service";
+import { isValidCoordinates } from "../utils/geo";
 
 export function initSocket(httpServer: HttpServer): Server {
   const io = new Server(httpServer, {
@@ -53,26 +55,32 @@ export function initSocket(httpServer: HttpServer): Server {
     });
 
     // Start Live GPS Tracking Session
-    socket.on("donor:location:start", async (data: { lat: number; lng: number; bloodType?: string }) => {
+    socket.on("donor:location:start", async (data: { lat?: number; lng?: number; latitude?: number; longitude?: number; accuracy?: number; bloodType?: string }) => {
       if (!userId) return;
       try {
-        await Donor.findOneAndUpdate(
-          { userId },
-          {
-            isLiveTracking: true,
-            shareLiveLocation: true,
-            location: { type: "Point", coordinates: [data.lng, data.lat] },
-            lastLocationUpdate: new Date(),
-          }
-        );
+        const lat = data.latitude ?? data.lat;
+        const lng = data.longitude ?? data.lng;
+        const accuracy = data.accuracy ?? 10;
 
-        io.to("live-dispatch").emit("donor:location_started", {
-          userId,
-          lat: data.lat,
-          lng: data.lng,
-          bloodType: data.bloodType,
-          updatedAt: new Date().toISOString(),
-        });
+        if (lat !== undefined && lng !== undefined && isValidCoordinates(lat, lng, accuracy)) {
+          const rec = await LocationService.updateDonorLocation(userId, {
+            latitude: lat,
+            longitude: lng,
+            accuracy,
+            bloodType: data.bloodType,
+          });
+
+          io.to("live-dispatch").emit("donor:location_started", {
+            userId,
+            donorId: rec.donorId,
+            lat: rec.latitude,
+            lng: rec.longitude,
+            accuracy: rec.accuracy,
+            qualityCategory: rec.qualityCategory,
+            bloodType: rec.bloodType,
+            updatedAt: rec.lastUpdatedAt,
+          });
+        }
       } catch (err) {
         logger.error({ err, userId }, "Failed to start live donor location session");
       }
@@ -81,27 +89,39 @@ export function initSocket(httpServer: HttpServer): Server {
     // Continuous Live GPS Update
     socket.on(
       "donor:location:update",
-      async (data: { lat: number; lng: number; bloodType?: string; heading?: number; speed?: number }) => {
+      async (data: { lat?: number; lng?: number; latitude?: number; longitude?: number; accuracy?: number; heading?: number; speed?: number; timestamp?: number; bloodType?: string }) => {
         if (!userId) return;
         try {
-          // Update MongoDB GeoJSON coordinates in background
-          await Donor.findOneAndUpdate(
-            { userId, shareLiveLocation: true },
-            {
-              location: { type: "Point", coordinates: [data.lng, data.lat] },
-              isLiveTracking: true,
-              lastLocationUpdate: new Date(),
-            }
-          );
+          const lat = data.latitude ?? data.lat;
+          const lng = data.longitude ?? data.lng;
+          const accuracy = data.accuracy ?? 15;
+
+          if (lat === undefined || lng === undefined || !isValidCoordinates(lat, lng, accuracy)) {
+            logger.warn({ userId, data }, "Rejected invalid donor location update payload");
+            return;
+          }
+
+          const rec = await LocationService.updateDonorLocation(userId, {
+            latitude: lat,
+            longitude: lng,
+            accuracy,
+            heading: data.heading,
+            speed: data.speed,
+            timestamp: data.timestamp,
+            bloodType: data.bloodType,
+          });
 
           io.to("live-dispatch").emit("donor:location_updated", {
             userId,
-            lat: data.lat,
-            lng: data.lng,
-            bloodType: data.bloodType,
-            heading: data.heading,
-            speed: data.speed,
-            updatedAt: new Date().toISOString(),
+            donorId: rec.donorId,
+            lat: rec.latitude,
+            lng: rec.longitude,
+            accuracy: rec.accuracy,
+            qualityCategory: rec.qualityCategory,
+            heading: rec.heading,
+            speed: rec.speed,
+            bloodType: rec.bloodType,
+            updatedAt: rec.lastUpdatedAt,
           });
         } catch (err) {
           logger.error({ err, userId }, "Failed to process donor GPS update");
@@ -113,7 +133,7 @@ export function initSocket(httpServer: HttpServer): Server {
     socket.on("donor:location:stop", async () => {
       if (!userId) return;
       try {
-        await Donor.findOneAndUpdate({ userId }, { isLiveTracking: false });
+        await LocationService.stopDonorLocation(userId);
         io.to("live-dispatch").emit("donor:location_stopped", {
           userId,
           updatedAt: new Date().toISOString(),
@@ -123,8 +143,13 @@ export function initSocket(httpServer: HttpServer): Server {
       }
     });
 
-    socket.on("disconnect", () => {
+    socket.on("disconnect", async () => {
       logger.info({ userId, socketId: socket.id }, "Socket disconnected");
+      if (userId && role === "donor") {
+        try {
+          await LocationService.stopDonorLocation(userId);
+        } catch (e) { /* ignore */ }
+      }
     });
   });
 

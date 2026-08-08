@@ -61,6 +61,8 @@ interface MatchItem {
 
 import { useSocketDispatch } from "@/hooks/useSocketDispatch";
 import { useLiveLocation } from "@/hooks/useLiveLocation";
+import { LiveLocationControl } from "@/components/widgets/LiveLocationControl";
+import { LiveDispatchMap } from "@/components/map/LiveDispatchMap";
 
 export default function DonorDashboardPage() {
   const router = useRouter();
@@ -71,10 +73,16 @@ export default function DonorDashboardPage() {
   const { socket } = useSocketDispatch();
   const [donorProfile, setDonorProfile] = useState<DonorProfile | null>(null);
 
-  const { isTracking, startTracking, stopTracking, currentCoords } = useLiveLocation(
-    socket,
-    donorProfile?.bloodType || "O-"
-  );
+  const {
+    isTracking,
+    currentCoords,
+    qualityCategory,
+    permissionError,
+    emergencyMode,
+    setEmergencyMode,
+    startTracking,
+    stopTracking,
+  } = useLiveLocation(socket, donorProfile?.bloodType || "O-");
   const [matches, setMatches] = useState<MatchItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -533,10 +541,57 @@ export default function DonorDashboardPage() {
                       <Icon className={`h-4 w-4 mx-auto mb-1.5 ${s.color}`} />
                       <p className={`text-3xl font-black ${s.color}`}>{s.value}</p>
                       <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider mt-1">{s.label}</p>
-                      <p className="text-[8px] text-zinc-600 mt-0.5">{s.sub}</p>
                     </div>
                   );
                 })}
+              </div>
+
+              {/* Real-Time GPS Opt-In & Radar Controls */}
+              <LiveLocationControl
+                isTracking={isTracking}
+                accuracyMeters={currentCoords?.accuracy}
+                qualityCategory={qualityCategory}
+                permissionError={permissionError}
+                emergencyMode={emergencyMode}
+                onStartTracking={startTracking}
+                onStopTracking={stopTracking}
+                onToggleEmergencyMode={setEmergencyMode}
+              />
+
+              {/* Real-Time 3D Interactive Map */}
+              <div className="space-y-2 font-mono">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-zinc-100 flex items-center gap-2">
+                    <span>3D Real-Time Donor Radar &amp; Emergency Map</span>
+                    <span className="text-[8px] bg-rose-500/10 text-rose-400 border border-rose-500/30 px-2 py-0.5 rounded">
+                      PERSPECTIVE ACTIVE
+                    </span>
+                  </h3>
+                  <span className="text-[9px] text-zinc-500">Live GPS markers auto-update</span>
+                </div>
+                <LiveDispatchMap
+                  centerLat={currentCoords?.latitude || donorProfile?.location.coordinates[1] || 12.9716}
+                  centerLng={currentCoords?.longitude || donorProfile?.location.coordinates[0] || 77.5946}
+                  zoom={13}
+                  currentUserLocation={currentCoords ? { lat: currentCoords.latitude, lng: currentCoords.longitude, accuracy: currentCoords.accuracy } : null}
+                  donors={donorProfile ? [{
+                    userId: user._id,
+                    bloodType: donorProfile.bloodType,
+                    lat: currentCoords?.latitude || donorProfile.location.coordinates[1],
+                    lng: currentCoords?.longitude || donorProfile.location.coordinates[0],
+                    accuracy: currentCoords?.accuracy || 12,
+                    isLiveTracking: isTracking,
+                    updatedAt: new Date().toISOString(),
+                  }] : []}
+                  emergencies={matches.map((m) => ({
+                    id: m._id,
+                    bloodType: m.request.bloodType,
+                    unitsNeeded: 2,
+                    urgencyLevel: m.request.urgencyLevel,
+                    lat: currentCoords ? currentCoords.latitude + 0.015 : 12.9816,
+                    lng: currentCoords ? currentCoords.longitude + 0.015 : 77.6046,
+                  }))}
+                />
               </div>
 
               {/* Emergency Match Request Feed */}

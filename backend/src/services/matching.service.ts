@@ -99,40 +99,43 @@ export const mongoNearFallback: GeoQueryStrategy = {
 // ---------------------------------------------------------------------------
 export const redisGeoStrategy: GeoQueryStrategy = {
   async findNearby(lat, lng, radiusKm) {
-    // ── TODO-C ────────────────────────────────────────────────────────────
-    // Wire up once Teammate C's geo indexing lands.
-    // Falls back to mongoNearFallback if Redis key doesn't exist or throws.
-    //
-    // Expected Redis data structure:
-    //   Key:   "geo:donors"
-    //   Type:  GEO (populated by Teammate C's indexer when a Donor is saved)
-    //   Value: donor ObjectId strings as member names
-    //
-    // Uncomment and adapt this block when the Redis index is live:
-    //
-    //   const members = await redis.call(
-    //     "GEORADIUS", "geo:donors",
-    //     lng, lat, radiusKm, "km",
-    //     "ASC", "COUNT", MAX_GEO_CANDIDATES
-    //   ) as string[];
-    //   if (!members || members.length === 0) return [];
-    //   const ninetyDaysAgo = new Date(Date.now() - NINETY_DAYS_MS);
-    //   return Donor.find({
-    //     _id: { $in: members.map(id => new Types.ObjectId(id)) },
-    //     $or: [
-    //       { lastDonationDate: null },
-    //       { lastDonationDate: { $lte: ninetyDaysAgo } },
-    //     ],
-    //   });
-    //
-    // ─────────────────────────────────────────────────────────────────────
     try {
-      // Intentional: throws until TODO-C is implemented, triggering fallback.
-      const testKey = await redis.call("EXISTS", "geo:donors");
-      if (!testKey) throw new Error("Redis geo:donors key does not exist");
+      const ninetyDaysAgo = new Date(Date.now() - NINETY_DAYS_MS);
 
-      // ← Replace this throw with the GEORADIUS block above when ready.
-      throw new Error("redisGeoStrategy: geo index not yet populated (TODO-C)");
+      // Query Redis GEO for nearby donor IDs using LocationService helper or raw Redis
+      let members: string[] = [];
+
+      if (typeof redis.geosearch === "function") {
+        members = await redis.geosearch("sanguis:donors:locations", lng, lat, radiusKm, "km");
+      } else if (typeof redis.georadius === "function") {
+        members = await redis.georadius("sanguis:donors:locations", lng, lat, radiusKm, "km");
+      } else if (typeof redis.call === "function") {
+        const raw =
+          (await redis.call("GEORADIUS", "sanguis:donors:locations", lng, lat, radiusKm, "km")) ||
+          (await redis.call("GEORADIUS", "geo:donors", lng, lat, radiusKm, "km"));
+        if (Array.isArray(raw)) members = raw.map(String);
+      }
+
+      if (!members || members.length === 0) {
+        // Fallback to mongoNearFallback if no members in Redis GEO
+        return mongoNearFallback.findNearby(lat, lng, radiusKm);
+      }
+
+      const validObjectIds = members
+        .filter((id) => Types.ObjectId.isValid(id))
+        .map((id) => new Types.ObjectId(id));
+
+      if (validObjectIds.length === 0) {
+        return mongoNearFallback.findNearby(lat, lng, radiusKm);
+      }
+
+      return await Donor.find({
+        _id: { $in: validObjectIds },
+        $or: [
+          { lastDonationDate: null },
+          { lastDonationDate: { $lte: ninetyDaysAgo } },
+        ],
+      }).limit(MAX_GEO_CANDIDATES);
     } catch (err) {
       logger.warn(
         { err: err instanceof Error ? err.message : err },
