@@ -66,6 +66,7 @@ export function createApp(): Application {
   app.use("/api/v1/bloodbanks", bloodBankRoutes);
   app.use("/api/v1/forecast", forecastRoutes);
   app.use("/api/v1/hospitals", hospitalRoutes);
+  app.use("/api/hospitals", hospitalRoutes);
   app.use("/api/v1/stats", statsRoutes);
   app.use("/api/v1/settings", settingsRoutes);
   app.use("/api/v1/content", contentRoutes);
