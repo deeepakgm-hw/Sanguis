@@ -42,7 +42,7 @@ export const env = cleanEnv(process.env, {
   AI_API_KEY: str({ default: "" }),
   LOCATION_UPDATE_INTERVAL: num({ default: 10000 }),
   LOCATION_MIN_DISTANCE_METERS: num({ default: 50 }),
-  RAPID_API_KEY: str({ default: "4268f5ab82msh06b82f4a145fc82p101a3ajsn36e1458126dc" }),
+  RAPID_API_KEY: str({ default: "" }),
 });
 
 // Fail fast: hackathon debugging time is precious, so we validate secrets
