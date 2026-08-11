@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/store/auth.store";
 import { api } from "@/lib/api";
 import { PageLoader } from "@/components/ui/loader";
 import { toast } from "sonner";
 
-export default function OAuthCallbackPage() {
+function OAuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const setAccessToken = useAuthStore((s) => s.setAccessToken);
@@ -50,3 +50,12 @@ export default function OAuthCallbackPage() {
 
   return <PageLoader message="Finalizing security handshake..." />;
 }
+
+export default function OAuthCallbackPage() {
+  return (
+    <Suspense fallback={<PageLoader message="Loading authentication handshake..." />}>
+      <OAuthCallbackContent />
+    </Suspense>
+  );
+}
+
