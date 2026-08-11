@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { AppLayout } from "@/components/layout/app-layout";
@@ -44,7 +44,7 @@ function getUrgencyBadge(level: string) {
   return map[level] ?? map.low;
 }
 
-export default function SearchPage() {
+function SearchPageContent() {
   const searchParams = useSearchParams();
   const { lat: userLat, lng: userLng } = useLiveLocation();
   const [activeTab, setActiveTab] = useState<"donors" | "requests" | "hospitals">("donors");
@@ -387,5 +387,17 @@ export default function SearchPage() {
         )}
       </div>
     </AppLayout>
+  );
+}
+
+export default function SearchPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex h-screen items-center justify-center font-mono text-xs text-slate-500">
+        Loading search portal...
+      </div>
+    }>
+      <SearchPageContent />
+    </Suspense>
   );
 }

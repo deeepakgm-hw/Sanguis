@@ -290,7 +290,7 @@ export async function fetchIndianHospitalsFromRapidAPI(query: {
     return { ...cached.data, fromCache: true };
   }
 
-  const apiKey = process.env.RAPID_API_KEY || env.RAPID_API_KEY || "4268f5ab82msh06b82f4a145fc82p101a3ajsn36e1458126dc";
+  const apiKey = process.env.RAPID_API_KEY || env.RAPID_API_KEY || "";
   const url = "https://indian-hospitals.p.rapidapi.com/hospitals/all";
 
   logger.info({ url, query }, "Calling RapidAPI Indian Hospitals endpoint");

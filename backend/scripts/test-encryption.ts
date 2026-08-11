@@ -1,13 +1,15 @@
 import * as assert from "assert";
+import * as crypto from "crypto";
 
 async function runTests() {
   // Set mock environment variables in process.env so that env.ts loads successfully
-  process.env.ENCRYPTION_KEY = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"; // 32 bytes (64 hex characters)
-  process.env.JWT_ACCESS_SECRET = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-  process.env.JWT_REFRESH_SECRET = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  const mockKey = crypto.randomBytes(32).toString("hex");
+  process.env.ENCRYPTION_KEY = mockKey; // 32 bytes (64 hex characters)
+  process.env.JWT_ACCESS_SECRET = mockKey;
+  process.env.JWT_REFRESH_SECRET = mockKey;
   process.env.CLIENT_URL = "http://localhost:3000";
   process.env.MONGO_URI = "mongodb://localhost:27017/test";
-  process.env.COOKIE_SECRET = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  process.env.COOKIE_SECRET = mockKey;
 
   console.log("Loading encryption service...");
   // Use dynamic import to prevent TS compilation import hoisting

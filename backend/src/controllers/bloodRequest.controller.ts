@@ -68,6 +68,16 @@ export const createBloodRequest = asyncHandler(async (req: Request, res: Respons
     after: { ...request.toObject(), credibility },
   });
 
+  // Trigger geo-radius urgency broadcast if urgency level is critical (Phase 4)
+  if (request.urgencyLevel === "critical") {
+    const { broadcastUrgentRequest } = await import("../services/geoBroadcast.service");
+    const [lng, lat] = request.geoLocation.coordinates;
+    // Start with initial radius of 10 km
+    broadcastUrgentRequest(req.app, request._id.toString(), lat, lng, 10).catch((err) => {
+      console.error("[createBloodRequest] Geo broadcast error:", err);
+    });
+  }
+
   // Run Emergency Dispatch & Multi-Tier Routing Engine
   let routeResult = null;
   let matchCount = 0;
