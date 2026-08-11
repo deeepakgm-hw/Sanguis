@@ -32,7 +32,6 @@ router.post("/urgency", requireAuth, validate(classifyUrgencySchema), classifyUr
 router.post("/fake-check", requireAuth, validate(detectFakeRequestSchema), detectFakeRequest);
 router.get("/trust-score/:donorId", requireAuth, calculateTrustScore);
 router.post("/explain-match", requireAuth, validate(generateMatchExplanationSchema), generateMatchExplanation);
-
 // 1. AI Donor Ranking Endpoint
 router.get(
   "/ranking",
