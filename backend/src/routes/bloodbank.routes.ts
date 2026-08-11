@@ -20,6 +20,19 @@ router.get(
   bloodBankController.getCommandCenterOverview
 );
 
+// Cross-Bank Inventory Reallocation Engine suggestions
+router.get(
+  "/reallocation/suggestions",
+  requireAuth,
+  bloodBankController.getReallocationSuggestions
+);
+
+// Blood Bank Search endpoint with availability ranking
+router.get(
+  "/search",
+  bloodBankController.searchBloodBanks
+);
+
 // Register a blood bank profile
 router.post(
   "/",

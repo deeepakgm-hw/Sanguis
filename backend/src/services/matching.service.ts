@@ -99,40 +99,43 @@ export const mongoNearFallback: GeoQueryStrategy = {
 // ---------------------------------------------------------------------------
 export const redisGeoStrategy: GeoQueryStrategy = {
   async findNearby(lat, lng, radiusKm) {
-    // ── TODO-C ────────────────────────────────────────────────────────────
-    // Wire up once Teammate C's geo indexing lands.
-    // Falls back to mongoNearFallback if Redis key doesn't exist or throws.
-    //
-    // Expected Redis data structure:
-    //   Key:   "geo:donors"
-    //   Type:  GEO (populated by Teammate C's indexer when a Donor is saved)
-    //   Value: donor ObjectId strings as member names
-    //
-    // Uncomment and adapt this block when the Redis index is live:
-    //
-    //   const members = await redis.call(
-    //     "GEORADIUS", "geo:donors",
-    //     lng, lat, radiusKm, "km",
-    //     "ASC", "COUNT", MAX_GEO_CANDIDATES
-    //   ) as string[];
-    //   if (!members || members.length === 0) return [];
-    //   const ninetyDaysAgo = new Date(Date.now() - NINETY_DAYS_MS);
-    //   return Donor.find({
-    //     _id: { $in: members.map(id => new Types.ObjectId(id)) },
-    //     $or: [
-    //       { lastDonationDate: null },
-    //       { lastDonationDate: { $lte: ninetyDaysAgo } },
-    //     ],
-    //   });
-    //
-    // ─────────────────────────────────────────────────────────────────────
     try {
-      // Intentional: throws until TODO-C is implemented, triggering fallback.
-      const testKey = await redis.call("EXISTS", "geo:donors");
-      if (!testKey) throw new Error("Redis geo:donors key does not exist");
+      const ninetyDaysAgo = new Date(Date.now() - NINETY_DAYS_MS);
 
-      // ← Replace this throw with the GEORADIUS block above when ready.
-      throw new Error("redisGeoStrategy: geo index not yet populated (TODO-C)");
+      // Query Redis GEO for nearby donor IDs using LocationService helper or raw Redis
+      let members: string[] = [];
+
+      if (typeof redis.geosearch === "function") {
+        members = await redis.geosearch("sanguis:donors:locations", lng, lat, radiusKm, "km");
+      } else if (typeof redis.georadius === "function") {
+        members = await redis.georadius("sanguis:donors:locations", lng, lat, radiusKm, "km");
+      } else if (typeof redis.call === "function") {
+        const raw =
+          (await redis.call("GEORADIUS", "sanguis:donors:locations", lng, lat, radiusKm, "km")) ||
+          (await redis.call("GEORADIUS", "geo:donors", lng, lat, radiusKm, "km"));
+        if (Array.isArray(raw)) members = raw.map(String);
+      }
+
+      if (!members || members.length === 0) {
+        // Fallback to mongoNearFallback if no members in Redis GEO
+        return mongoNearFallback.findNearby(lat, lng, radiusKm);
+      }
+
+      const validObjectIds = members
+        .filter((id) => Types.ObjectId.isValid(id))
+        .map((id) => new Types.ObjectId(id));
+
+      if (validObjectIds.length === 0) {
+        return mongoNearFallback.findNearby(lat, lng, radiusKm);
+      }
+
+      return await Donor.find({
+        _id: { $in: validObjectIds },
+        $or: [
+          { lastDonationDate: null },
+          { lastDonationDate: { $lte: ninetyDaysAgo } },
+        ],
+      }).limit(MAX_GEO_CANDIDATES);
     } catch (err) {
       logger.warn(
         { err: err instanceof Error ? err.message : err },
@@ -262,29 +265,28 @@ async function resolveUrgencyLevel(
 // RETURN TYPE
 // ---------------------------------------------------------------------------
 
+import { Match } from "../models/Match";
+
 export interface MatchCandidate {
   donor: DonorDoc;
   distanceKm: number;
-  // trustScore populated by Teammate B's AI service; defaults to 0 if not yet
-  // scored — donors with trustScore 0 simply rank lower, they are never excluded.
   trustScore: number;
+  // Rotation-Aware Donor Fatigue & Burnout Shield
+  fatigueShield: {
+    recentPings30d: number;
+    fatigueLevel: "low" | "moderate" | "high";
+    fatiguePenalty: number;
+    tradeoffScore: {
+      etaCostMinutes: number;
+      sustainabilityRatingPct: number;
+      explanation: string;
+    };
+  };
+  finalScore: number;
 }
 
-// ---------------------------------------------------------------------------
-// RANKING HELPER (exported for unit tests)
-//
-// Pure sort — no DB calls, no side effects.
-// Primary:   trustScore DESC  (higher trust = earlier in list)
-// Tiebreak:  distanceKm ASC   (closer = earlier when trust is equal)
-// ---------------------------------------------------------------------------
-
 export function rankCandidates(candidates: MatchCandidate[]): MatchCandidate[] {
-  return [...candidates].sort((a, b) => {
-    // trustScore populated by Teammate B's AI service; defaults to 0 if not yet
-    // scored — donors with trustScore 0 simply rank lower, they are never excluded.
-    if (b.trustScore !== a.trustScore) return b.trustScore - a.trustScore; // DESC
-    return a.distanceKm - b.distanceKm; // ASC tiebreaker
-  });
+  return [...candidates].sort((a, b) => b.finalScore - a.finalScore);
 }
 
 // ---------------------------------------------------------------------------
@@ -373,22 +375,68 @@ export async function findMatchesForRequest(
     );
   }
 
-  // ── 6. Compute distances + build candidate list ────────────────────────────
-  const candidates: MatchCandidate[] = availableEligible.map((donor) => {
-    const [dLng, dLat] = donor.location.coordinates; // GeoJSON: [lng, lat]
-    return {
-      donor,
-      distanceKm: haversineKm(reqLat, reqLng, dLat, dLng),
-      trustScore: donor.trustScore,
-    };
-  });
+  // ── 6. Compute distances + Fatigue Shield metrics ──────────────────────────
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-  // ── 7. Rank: trustScore DESC, distanceKm ASC ─────────────────────────────
+  const candidates: MatchCandidate[] = await Promise.all(
+    availableEligible.map(async (donor) => {
+      const [dLng, dLat] = donor.location.coordinates;
+      const dist = haversineKm(reqLat, reqLng, dLat, dLng);
+
+      // Query recent dispatch load (30d) for rotation-aware matching
+      let recentPings30d = 0;
+      try {
+        recentPings30d = await Match.countDocuments({
+          donor: donor._id,
+          createdAt: { $gte: thirtyDaysAgo },
+        });
+      } catch {
+        recentPings30d = 0;
+      }
+
+      let fatigueLevel: "low" | "moderate" | "high" = "low";
+      let fatiguePenalty = 0;
+      let sustainabilityRatingPct = 98;
+
+      if (recentPings30d >= 4) {
+        fatigueLevel = "high";
+        fatiguePenalty = 25;
+        sustainabilityRatingPct = 45;
+      } else if (recentPings30d >= 2) {
+        fatigueLevel = "moderate";
+        fatiguePenalty = 10;
+        sustainabilityRatingPct = 78;
+      }
+
+      const etaMin = Math.round((dist / 35) * 60); // assume 35km/h avg speed
+      const baseTrust = donor.trustScore || 100;
+      const finalScore = baseTrust - fatiguePenalty - dist * 0.5;
+
+      return {
+        donor,
+        distanceKm: dist,
+        trustScore: baseTrust,
+        fatigueShield: {
+          recentPings30d,
+          fatigueLevel,
+          fatiguePenalty,
+          tradeoffScore: {
+            etaCostMinutes: etaMin,
+            sustainabilityRatingPct,
+            explanation: `+${etaMin} min transit ETA · ${sustainabilityRatingPct}% donor pool sustainability protection score`,
+          },
+        },
+        finalScore,
+      };
+    })
+  );
+
+  // ── 7. Rank by finalScore DESC (rotation-balanced) ─────────────────────────
   const ranked = rankCandidates(candidates);
 
   logger.info(
     { requestId, eligible: ranked.length, geoCandidates: geoCandidates.length, voluntarilyExcluded: eligible.length - availableEligible.length },
-    "matching: findMatchesForRequest complete"
+    "matching: findMatchesForRequest complete with Donor Fatigue Shield"
   );
 
   return ranked;

@@ -7,11 +7,13 @@ export interface IUser extends Document {
   _id: Types.ObjectId;
   name: string;
   email: string;
+  phone?: string;
   password: string;
   role: UserRole;
   avatarUrl?: string;
   isEmailVerified: boolean;
   isActive: boolean;
+  isVerifiedRequester: boolean;
   mfaEnabled: boolean;
   authProvider: "local" | "google" | "github";
   lastLoginAt?: Date;
@@ -27,11 +29,13 @@ const userSchema = new Schema<IUser>(
   {
     name: { type: String, required: true, trim: true, maxlength: 100 },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true, index: true },
+    phone: { type: String, trim: true, sparse: true, index: true },
     password: { type: String, required: true, select: false }, // never returned by default
     role: { type: String, enum: ["user", "admin", "moderator", "hospital", "donor"], default: "user" },
     avatarUrl: { type: String },
     isEmailVerified: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },
+    isVerifiedRequester: { type: Boolean, default: false },
     mfaEnabled: { type: Boolean, default: false },
     authProvider: { type: String, enum: ["local", "google", "github"], default: "local" },
     lastLoginAt: { type: Date },

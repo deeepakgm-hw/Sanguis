@@ -30,7 +30,7 @@ const storage = multer.memoryStorage(); // buffer only; we stream straight to Cl
 function fileFilter(_req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) {
   const allowed = Object.keys(MAGIC_NUMBERS);
   if (!allowed.includes(file.mimetype)) {
-    return cb(new ApiError(400, `Unsupported file type: ${file.mimetype}`) as unknown as null);
+    return cb(new ApiError(400, `Unsupported file type: ${file.mimetype}`));
   }
   cb(null, true);
 }

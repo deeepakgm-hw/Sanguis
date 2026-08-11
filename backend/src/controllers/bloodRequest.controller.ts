@@ -51,10 +51,13 @@ export const getBloodRequest = asyncHandler(async (req: Request, res: Response) 
 export const createBloodRequest = asyncHandler(async (req: Request, res: Response) => {
   const hospitalId = req.user!.sub;
 
+  const { evaluateRequestCredibility } = await import("../services/corroboration.service");
+  const credibility = await evaluateRequestCredibility(hospitalId, req.body.urgencyLevel || "medium");
+
   const request = await BloodRequest.create({
     ...req.body,
     hospital: hospitalId,
-    status: "open",
+    status: credibility.requiresVerification ? "open" : "open",
   });
 
   await recordAudit({
@@ -62,37 +65,25 @@ export const createBloodRequest = asyncHandler(async (req: Request, res: Respons
     action: "blood_request.create",
     resourceType: "BloodRequest",
     resourceId: request._id.toString(),
-    after: request.toObject(),
+    after: { ...request.toObject(), credibility },
   });
 
-  // Run Cascade Routing (Part 2)
+  // Run Emergency Dispatch & Multi-Tier Routing Engine
   let routeResult = null;
   let matchCount = 0;
   try {
-    const result = await routeBloodRequest(request._id.toString());
-    routeResult = result;
-
-    if (result.stage === "donor_broadcast") {
-      const matchDocs = result.donorMatches.map((c) => ({
-        request: request._id,
-        donor: c.donor._id,
-      }));
-      if (matchDocs.length) {
-        // insertMany with ordered:false skips duplicate-key errors silently.
-        await Match.insertMany(matchDocs, { ordered: false });
-        matchCount = matchDocs.length;
-      }
-    }
+    const { executeEmergencyDispatch } = await import("../services/dispatch.service");
+    const dispatchResult = await executeEmergencyDispatch(request, req.app.get("io"));
+    routeResult = dispatchResult;
+    matchCount = dispatchResult.candidatesCount;
   } catch (err) {
-    // Cascade routing failure must never break the request-creation response.
-    // Log and continue — the operator can trigger a re-route/re-match later.
-    logger.error({ err }, "[createBloodRequest] cascade routing engine error");
+    logger.error({ err }, "[createBloodRequest] Emergency dispatch engine error");
   }
 
   return ApiResponse.created(
     res,
     { request, matchCount, routeResult },
-    "Blood request created"
+    "Blood request created & emergency dispatch executed"
   );
 });
 

@@ -122,3 +122,42 @@ export const deleteMatch = asyncHandler(async (req: Request, res: Response) => {
 
   return ApiResponse.success(res, null, "Match deleted");
 });
+
+/**
+ * POST /api/v1/matches/:id/outcome
+ * Mandatory closure step for emergency dispatches: grounds donor trust score
+ * in confirmed outcomes and recalibrates regional response ETA models.
+ */
+export const confirmOutcome = asyncHandler(async (req: Request, res: Response) => {
+  const { outcome, actualDeliveryTimeMinutes, notes } = req.body as {
+    outcome: "transfusion_successful" | "transfusion_delayed" | "unused_returned";
+    actualDeliveryTimeMinutes: number;
+    notes?: string;
+  };
+
+  const { confirmDispatchOutcome } = await import("../services/outcome.service");
+  const result = await confirmDispatchOutcome({
+    matchId: req.params.id,
+    outcome: outcome || "transfusion_successful",
+    actualDeliveryTimeMinutes: Number(actualDeliveryTimeMinutes) || 12,
+    actorId: req.user!.sub,
+    notes,
+  });
+
+  return ApiResponse.success(res, result, "Post-emergency outcome loop closed successfully");
+});
+
+/** GET /api/v1/matches/compatibility — canonical blood compatibility matrix */
+export const getCompatibilityMatrix = asyncHandler(async (_req: Request, res: Response) => {
+  const matrix = {
+    "O-":  { "O-":true,  "O+":true,  "A-":true,  "A+":true,  "B-":true,  "B+":true,  "AB-":true,  "AB+":true  },
+    "O+":  { "O-":false, "O+":true,  "A-":false, "A+":true,  "B-":false, "B+":true,  "AB-":false, "AB+":true  },
+    "A-":  { "O-":false, "O+":false, "A-":true,  "A+":true,  "B-":false, "B+":false, "AB-":true,  "AB+":true  },
+    "A+":  { "O-":false, "O+":false, "A-":false, "A+":true,  "B-":false, "B+":false, "AB-":false, "AB+":true  },
+    "B-":  { "O-":false, "O+":false, "A-":false, "A+":false, "B-":true,  "B+":true,  "AB-":true,  "AB+":true  },
+    "B+":  { "O-":false, "O+":false, "A-":false, "A+":false, "B-":false, "B+":true,  "AB-":false, "AB+":true  },
+    "AB-": { "O-":false, "O+":false, "A-":false, "A+":false, "B-":false, "B+":false, "AB-":true,  "AB+":true  },
+    "AB+": { "O-":false, "O+":false, "A-":false, "A+":false, "B-":false, "B+":false, "AB-":false, "AB+":true  },
+  };
+  return ApiResponse.success(res, matrix, "Compatibility matrix fetched");
+});

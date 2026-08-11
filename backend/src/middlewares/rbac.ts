@@ -38,3 +38,36 @@ export function requireOwnership(getOwnerId: (req: Request) => string | Promise<
     next();
   };
 }
+
+/**
+ * Guard to prevent unverified requester accounts from abusing features like urgent broadcasts.
+ * Resolves the latest status from the database using req.user.sub to prevent stale token bypasses.
+ */
+export async function requireVerifiedRequester(req: Request, _res: Response, next: NextFunction): Promise<void> {
+  if (!req.user) return next(ApiError.unauthorized("Authentication required"));
+
+  const { User } = await import("../models/User");
+  const user = await User.findById(req.user.sub);
+
+  req.user.isVerifiedRequester = user?.isVerifiedRequester ?? false;
+
+  if (!req.user.isVerifiedRequester) {
+    return next(ApiError.forbidden("Requires verified requester status"));
+  }
+  next();
+}
+
+/**
+ * Permission guard using SystemAction from config/permissions.ts.
+ */
+export function requirePermission(action: import("../config/permissions").SystemAction) {
+  return (req: Request, _res: Response, next: NextFunction): void => {
+    if (!req.user) return next(ApiError.unauthorized("Authentication required"));
+    const { hasPermission } = require("../config/permissions");
+    if (!hasPermission(req.user.role as any, action)) {
+      return next(ApiError.forbidden(`Permission denied. Required: ${action}`));
+    }
+    next();
+  };
+}
+

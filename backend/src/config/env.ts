@@ -18,6 +18,8 @@ export const env = cleanEnv(process.env, {
 
   COOKIE_SECRET: str(),
 
+  ENCRYPTION_KEY: str({ desc: "AES-256-GCM key, 32 bytes hex-encoded" }),
+
   CLOUDINARY_CLOUD_NAME: str({ default: "" }),
   CLOUDINARY_API_KEY: str({ default: "" }),
   CLOUDINARY_API_SECRET: str({ default: "" }),
@@ -32,10 +34,24 @@ export const env = cleanEnv(process.env, {
   GOOGLE_CLIENT_SECRET: str({ default: "" }),
   GITHUB_CLIENT_ID: str({ default: "" }),
   GITHUB_CLIENT_SECRET: str({ default: "" }),
+  GOOGLE_PLACES_API_KEY: str({ default: "" }),
+
+  MAP_PROVIDER: str({ default: "leaflet" }),
+  MAP_API_KEY: str({ default: "" }),
+  AI_PROVIDER: str({ default: "baseline" }),
+  AI_API_KEY: str({ default: "" }),
+  LOCATION_UPDATE_INTERVAL: num({ default: 10000 }),
+  LOCATION_MIN_DISTANCE_METERS: num({ default: 50 }),
+  RAPID_API_KEY: str({ default: "" }),
 });
 
 // Fail fast: hackathon debugging time is precious, so we validate secrets
 // strength at boot instead of getting a cryptic JWT error 3 hours in.
 if (env.JWT_ACCESS_SECRET.length < 32 || env.JWT_REFRESH_SECRET.length < 32) {
   throw new Error("JWT secrets must be at least 32 characters long.");
+}
+
+const encryptionKeyBuffer = Buffer.from(env.ENCRYPTION_KEY, "hex");
+if (encryptionKeyBuffer.length !== 32 || !/^[0-9a-fA-F]{64}$/.test(env.ENCRYPTION_KEY)) {
+  throw new Error("ENCRYPTION_KEY must be a 32-byte hex-encoded string (64 hex characters).");
 }

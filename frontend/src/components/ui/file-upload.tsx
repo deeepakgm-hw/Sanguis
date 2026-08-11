@@ -202,7 +202,7 @@ export function FileUpload({
           <Button
             type="button"
             variant="ghost"
-            size="icon"
+            size="sm"
             className="rounded-full shrink-0"
             onClick={cancelUpload}
             disabled={status === "uploading"}

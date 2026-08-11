@@ -3,9 +3,10 @@ import { asyncHandler } from "../utils/asyncHandler";
 import { ApiResponse } from "../utils/ApiResponse";
 import { ApiError } from "../utils/ApiError";
 import { Donor } from "../models/Donor";
+import { User } from "../models/User";
 import { recordAudit } from "../services/audit.service";
 
-/** GET /api/v1/donors — list all donor profiles (admin/moderator). */
+/** GET /api/v1/donors — list donor profiles for search directory (authenticated). */
 export const listDonors = asyncHandler(async (req: Request, res: Response) => {
   const page  = Math.max(1, Number(req.query.page)  || 1);
   const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
@@ -17,13 +18,20 @@ export const listDonors = asyncHandler(async (req: Request, res: Response) => {
 
   const [donors, total] = await Promise.all([
     Donor.find(filter)
-      .sort({ createdAt: -1 })
+      .populate("userId", "name email role isEmailVerified")
+      .sort({ trustScore: -1, createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit),
     Donor.countDocuments(filter),
   ]);
 
-  return ApiResponse.success(res, donors, "Donors fetched", 200, {
+  // Format donors so user object is populated
+  const formattedDonors = donors.map((d) => ({
+    ...d.toObject(),
+    user: d.userId,
+  }));
+
+  return ApiResponse.success(res, formattedDonors, "Donors fetched", 200, {
     page,
     limit,
     total,
@@ -33,17 +41,17 @@ export const listDonors = asyncHandler(async (req: Request, res: Response) => {
 
 /** GET /api/v1/donors/:id */
 export const getDonor = asyncHandler(async (req: Request, res: Response) => {
-  const donor = await Donor.findById(req.params.id);
+  const donor = await Donor.findById(req.params.id).populate("userId", "name email role");
   if (!donor) throw ApiError.notFound("Donor not found");
-  return ApiResponse.success(res, donor);
+  return ApiResponse.success(res, { ...donor.toObject(), user: donor.userId });
 });
 
 /** GET /api/v1/donors/me */
 export const getDonorMe = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user!.sub;
-  const donor = await Donor.findOne({ userId });
+  const donor = await Donor.findOne({ userId }).populate("userId", "name email role");
   if (!donor) throw ApiError.notFound("Donor profile not found for this account");
-  return ApiResponse.success(res, donor);
+  return ApiResponse.success(res, { ...donor.toObject(), user: donor.userId });
 });
 
 /** POST /api/v1/donors — create a Donor profile for the authenticated user. */
@@ -51,7 +59,11 @@ export const createDonor = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user!.sub;
 
   const existing = await Donor.findOne({ userId });
-  if (existing) throw ApiError.conflict("A donor profile already exists for this account");
+  if (existing) {
+    // If donor profile exists, update it instead of throwing error
+    const updated = await Donor.findByIdAndUpdate(existing._id, req.body, { new: true, runValidators: true });
+    return ApiResponse.success(res, updated, "Donor profile updated");
+  }
 
   const donor = await Donor.create({ ...req.body, userId });
 
@@ -64,6 +76,39 @@ export const createDonor = asyncHandler(async (req: Request, res: Response) => {
   });
 
   return ApiResponse.created(res, donor, "Donor profile created");
+});
+
+/** PATCH /api/v1/donors/me/location — update current logged in donor's live GPS coordinates. */
+export const updateLocationMe = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user!.sub;
+  const { lat, lng } = req.body;
+
+  if (typeof lat !== "number" || typeof lng !== "number") {
+    throw ApiError.badRequest("lat and lng must be numbers");
+  }
+
+  const donor = await Donor.findOneAndUpdate(
+    { userId },
+    { location: { type: "Point", coordinates: [lng, lat] } },
+    { new: true }
+  );
+
+  if (!donor) throw ApiError.notFound("Donor profile not found");
+
+  // Emit socket event if io is attached
+  const io = req.app.get("io");
+  if (io) {
+    io.to("live-dispatch").emit("donor:location_updated", {
+      userId,
+      donorId: donor._id.toString(),
+      bloodType: donor.bloodType,
+      lat,
+      lng,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  return ApiResponse.success(res, donor, "Live location updated");
 });
 
 /** PATCH /api/v1/donors/:id — update own donor profile. */
@@ -108,5 +153,5 @@ export const deleteDonor = asyncHandler(async (req: Request, res: Response) => {
     before: donor.toObject(),
   });
 
-  return ApiResponse.success(res, null, "Donor profile deleted");
+  return ApiResponse.success(res, { id: req.params.id }, "Donor deleted");
 });

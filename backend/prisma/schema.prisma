@@ -1,0 +1,168 @@
+// ---------------------------------------------------------------------------
+// Sanguis Prisma Schema (MongoDB Connector)
+//
+// NOTE: Used purely as a DOCUMENTED, TYPE-SAFE SCHEMA REFERENCE and optional
+// query layer for read-heavy endpoints (dashboard stats, directory searches).
+// Write validation, hooks, and encryption are managed by Mongoose models in
+// backend/src/models/. Prisma + MongoDB does not support migrations or
+// relational constraints like Prisma + PostgreSQL.
+// ---------------------------------------------------------------------------
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  user
+  admin
+  moderator
+  hospital
+  donor
+}
+
+enum BloodType {
+  A_POS  @map("A+")
+  A_NEG  @map("A-")
+  B_POS  @map("B+")
+  B_NEG  @map("B-")
+  AB_POS @map("AB+")
+  AB_NEG @map("AB-")
+  O_POS  @map("O+")
+  O_NEG  @map("O-")
+}
+
+enum UrgencyLevel {
+  low
+  medium
+  high
+  critical
+}
+
+enum RequestStatus {
+  open
+  matched
+  fulfilled
+  cancelled
+  expired
+}
+
+enum MatchStatus {
+  pending
+  accepted
+  declined
+  expired
+  completed
+}
+
+model User {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  name            String
+  email           String   @unique
+  passwordHash    String
+  role            Role     @default(user)
+  avatarUrl       String?
+  isEmailVerified Boolean  @default(false)
+  mfaEnabled      Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  donorProfile    Donor?
+  preferences     UserPreferences?
+  bloodRequests   BloodRequest[]
+
+  @@map("users")
+}
+
+type GeoPoint {
+  type        String   @default("Point")
+  coordinates Float[]  // [longitude, latitude]
+}
+
+model Donor {
+  id               String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId           String    @unique @db.ObjectId
+  user             User      @relation(fields: [userId], references: [id])
+  bloodType        String
+  lastDonationDate DateTime?
+  medicalFlags     Json?
+  location         GeoPoint
+  trustScore       Float     @default(0)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  matches          Match[]
+
+  @@map("donors")
+}
+
+model BloodRequest {
+  id           String        @id @default(auto()) @map("_id") @db.ObjectId
+  bloodType    String
+  unitsNeeded  Int
+  urgencyLevel UrgencyLevel  @default(medium)
+  hospitalId   String        @map("hospital") @db.ObjectId
+  hospital     User          @relation(fields: [hospitalId], references: [id])
+  hospitalName String?
+  status       RequestStatus @default(open)
+  geoLocation  GeoPoint
+  description  String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  matches      Match[]
+
+  @@map("bloodrequests")
+}
+
+model Match {
+  id             String      @id @default(auto()) @map("_id") @db.ObjectId
+  bloodRequestId String      @map("bloodRequest") @db.ObjectId
+  bloodRequest   BloodRequest @relation(fields: [bloodRequestId], references: [id])
+  donorId        String      @map("donor") @db.ObjectId
+  donor          Donor       @relation(fields: [donorId], references: [id])
+  status         MatchStatus @default(pending)
+  score          Float?
+  respondedAt    DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@map("matches")
+}
+
+model UserPreferences {
+  id                  String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId              String   @unique @db.ObjectId
+  user                User     @relation(fields: [userId], references: [id])
+  emergencyAlerts     Boolean  @default(true)
+  donationReminders   Boolean  @default(true)
+  newMessages         Boolean  @default(true)
+  trustUpdates        Boolean  @default(false)
+  blogUpdates         Boolean  @default(false)
+  showProfile         Boolean  @default(true)
+  shareLocation       Boolean  @default(true)
+  allowDirectMessages Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@map("userpreferences")
+}
+
+model Notification {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId         String   @db.ObjectId
+  type           String
+  title          String
+  message        String
+  read           Boolean  @default(false)
+  bloodRequestId String?  @db.ObjectId
+  matchId        String?  @db.ObjectId
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("notifications")
+}

@@ -4,9 +4,11 @@ interface User {
   _id: string;
   name: string;
   email: string;
+  phone?: string;
   role: "user" | "admin" | "moderator" | "hospital" | "donor";
   avatarUrl?: string;
   isEmailVerified: boolean;
+  mfaEnabled?: boolean;
 }
 
 interface AuthState {

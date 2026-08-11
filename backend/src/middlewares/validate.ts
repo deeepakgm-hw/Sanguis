@@ -20,7 +20,11 @@ export function validate(schema: AnyZodObject) {
       next();
     } catch (err) {
       if (err instanceof ZodError) {
-        return next(ApiError.badRequest("Validation failed", err.flatten().fieldErrors));
+        const formattedErrors = err.errors.map((e) => {
+          const field = e.path.filter((p) => p !== "body" && p !== "query" && p !== "params").join(".");
+          return field ? `${field}: ${e.message}` : e.message;
+        });
+        return next(ApiError.badRequest("Validation failed", formattedErrors));
       }
       next(err);
     }

@@ -59,13 +59,30 @@ interface MatchItem {
   };
 }
 
+import { useSocketDispatch } from "@/hooks/useSocketDispatch";
+import { useLiveLocation } from "@/hooks/useLiveLocation";
+import { LiveLocationControl } from "@/components/widgets/LiveLocationControl";
+import { LiveDispatchMap } from "@/components/map/LiveDispatchMap";
+
 export default function DonorDashboardPage() {
   const router = useRouter();
   const { isBootstrapping } = useAuth();
   const user = useAuthStore((s) => s.user);
   const clear = useAuthStore((s) => s.clear);
 
+  const { socket } = useSocketDispatch();
   const [donorProfile, setDonorProfile] = useState<DonorProfile | null>(null);
+
+  const {
+    isTracking,
+    currentCoords,
+    qualityCategory,
+    permissionError,
+    emergencyMode,
+    setEmergencyMode,
+    startTracking,
+    stopTracking,
+  } = useLiveLocation(socket, donorProfile?.bloodType || "O-");
   const [matches, setMatches] = useState<MatchItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -350,21 +367,21 @@ export default function DonorDashboardPage() {
                   </p>
                 </div>
 
-                {/* PRIMARY CTA: RESPOND TO EMERGENCY */}
-                <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0">
+                {/* PRIMARY CTA: SINGLE LARGE UNAMBIGUOUS TOUCH TARGET */}
+                <div className="flex flex-col items-center gap-2 shrink-0 w-full md:w-auto">
                   <button
                     id="cta-respond-emergency-hero"
                     onClick={() => handleRespondMatch(pendingMatch._id, "accept")}
-                    className="w-full sm:w-auto bg-rose-600 hover:bg-rose-500 text-white font-black text-sm uppercase tracking-wider px-8 py-4 rounded-xl shadow-xl shadow-rose-950/60 transition-all hover:scale-105 flex items-center justify-center gap-2 group"
+                    className="w-full md:w-72 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm uppercase tracking-wider h-14 rounded-xl shadow-2xl shadow-emerald-950/60 transition-all hover:scale-[1.02] flex items-center justify-center gap-2.5 ring-2 ring-emerald-400/50 animate-pulse"
                   >
-                    <AlertTriangle className="h-5 w-5 group-hover:animate-bounce" />
-                    Respond To Emergency Now
+                    <CheckCircle2 className="h-6 w-6 shrink-0" />
+                    <span>Accept Emergency Dispatch</span>
                   </button>
                   <button
                     onClick={() => handleRespondMatch(pendingMatch._id, "decline")}
-                    className="w-full sm:w-auto border border-zinc-800 bg-zinc-900/60 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 font-bold text-xs uppercase tracking-wider px-4 py-4 rounded-xl transition-colors"
+                    className="text-[10px] font-mono text-zinc-500 hover:text-rose-400 underline decoration-zinc-800 hover:decoration-rose-500 transition-colors py-1"
                   >
-                    Decline
+                    Unable to respond to this request
                   </button>
                 </div>
               </div>
@@ -524,10 +541,57 @@ export default function DonorDashboardPage() {
                       <Icon className={`h-4 w-4 mx-auto mb-1.5 ${s.color}`} />
                       <p className={`text-3xl font-black ${s.color}`}>{s.value}</p>
                       <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider mt-1">{s.label}</p>
-                      <p className="text-[8px] text-zinc-600 mt-0.5">{s.sub}</p>
                     </div>
                   );
                 })}
+              </div>
+
+              {/* Real-Time GPS Opt-In & Radar Controls */}
+              <LiveLocationControl
+                isTracking={isTracking}
+                accuracyMeters={currentCoords?.accuracy}
+                qualityCategory={qualityCategory}
+                permissionError={permissionError}
+                emergencyMode={emergencyMode}
+                onStartTracking={startTracking}
+                onStopTracking={stopTracking}
+                onToggleEmergencyMode={setEmergencyMode}
+              />
+
+              {/* Real-Time 3D Interactive Map */}
+              <div className="space-y-2 font-mono">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-zinc-100 flex items-center gap-2">
+                    <span>3D Real-Time Donor Radar &amp; Emergency Map</span>
+                    <span className="text-[8px] bg-rose-500/10 text-rose-400 border border-rose-500/30 px-2 py-0.5 rounded">
+                      PERSPECTIVE ACTIVE
+                    </span>
+                  </h3>
+                  <span className="text-[9px] text-zinc-500">Live GPS markers auto-update</span>
+                </div>
+                <LiveDispatchMap
+                  centerLat={currentCoords?.latitude || donorProfile?.location.coordinates[1] || 12.9716}
+                  centerLng={currentCoords?.longitude || donorProfile?.location.coordinates[0] || 77.5946}
+                  zoom={13}
+                  currentUserLocation={currentCoords ? { lat: currentCoords.latitude, lng: currentCoords.longitude, accuracy: currentCoords.accuracy } : null}
+                  donors={donorProfile ? [{
+                    userId: user._id,
+                    bloodType: donorProfile.bloodType,
+                    lat: currentCoords?.latitude || donorProfile.location.coordinates[1],
+                    lng: currentCoords?.longitude || donorProfile.location.coordinates[0],
+                    accuracy: currentCoords?.accuracy || 12,
+                    isLiveTracking: isTracking,
+                    updatedAt: new Date().toISOString(),
+                  }] : []}
+                  emergencies={matches.map((m) => ({
+                    id: m._id,
+                    bloodType: m.request.bloodType,
+                    unitsNeeded: 2,
+                    urgencyLevel: m.request.urgencyLevel,
+                    lat: currentCoords ? currentCoords.latitude + 0.015 : 12.9816,
+                    lng: currentCoords ? currentCoords.longitude + 0.015 : 77.6046,
+                  }))}
+                />
               </div>
 
               {/* Emergency Match Request Feed */}
@@ -573,18 +637,18 @@ export default function DonorDashboardPage() {
                             </p>
                           </div>
 
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-col items-end gap-1">
                             {isPending ? (
                               <>
                                 <button
                                   onClick={() => handleRespondMatch(m._id, "accept")}
-                                  className="text-xs font-black h-9 px-5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg uppercase tracking-wider shadow-lg shadow-rose-950/40 flex items-center gap-1.5 transition-all hover:scale-105"
+                                  className="text-xs font-black h-11 px-6 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl uppercase tracking-wider shadow-lg shadow-emerald-950/40 flex items-center gap-2 transition-all hover:scale-105"
                                 >
-                                  <AlertTriangle className="h-3.5 w-3.5" /> Respond To Emergency
+                                  <CheckCircle2 className="h-4 w-4" /> Accept Dispatch
                                 </button>
                                 <button
                                   onClick={() => handleRespondMatch(m._id, "decline")}
-                                  className="text-xs font-bold h-9 px-3 border border-zinc-800 bg-zinc-900/50 hover:bg-zinc-900 text-zinc-400 hover:text-zinc-200 rounded-lg uppercase transition-colors"
+                                  className="text-[9px] text-zinc-500 hover:text-rose-400 underline transition-colors"
                                 >
                                   Decline
                                 </button>

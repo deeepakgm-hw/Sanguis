@@ -9,6 +9,7 @@ import { noSqlSanitize, httpParamProtection, xssSanitize } from "./middlewares/s
 import { globalLimiter } from "./middlewares/security/rateLimiter";
 import { requestLogger } from "./middlewares/requestLogger";
 import { ipBlocker } from "./middlewares/security/ipBlocker";
+import { ipBlacklist } from "./middlewares/security/ipBlacklist";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler";
 
 import authRoutes from "./routes/auth.routes";
@@ -22,7 +23,14 @@ import bloodRequestRoutes from "./routes/bloodRequest.routes";
 import matchRoutes from "./routes/match.routes";
 import bloodBankRoutes from "./routes/bloodbank.routes";
 import forecastRoutes from "./routes/forecast.routes";
+import hospitalRoutes from "./routes/hospital.routes";
+import statsRoutes from "./routes/stats.routes";
+import settingsRoutes from "./routes/settings.routes";
+import contentRoutes from "./routes/content.routes";
+import donationRoutes from "./routes/donation.routes";
+import seedRoutes from "./routes/seed.routes";
 import aiRoutes from "./routes/ai.routes";
+import { streamEvents } from "./controllers/events.controller";
 
 export function createApp(): Application {
   const app = express();
@@ -33,6 +41,7 @@ export function createApp(): Application {
   // --- Order matters ---
   app.use(requestLogger);
   app.use(ipBlocker);
+  app.use(ipBlacklist);
   app.use(securityHeaders);
   app.use(corsMiddleware);
   app.use(compression());
@@ -45,6 +54,7 @@ export function createApp(): Application {
   app.use(globalLimiter);
 
   app.use("/api/v1/health", healthRoutes);
+  app.get("/api/v1/events/stream", streamEvents);
   app.use("/api/v1/auth", authRoutes);
   app.use("/api/v1/users", userRoutes);
   app.use("/api/v1/files", fileRoutes);
@@ -55,6 +65,13 @@ export function createApp(): Application {
   app.use("/api/v1/matches", matchRoutes);
   app.use("/api/v1/bloodbanks", bloodBankRoutes);
   app.use("/api/v1/forecast", forecastRoutes);
+  app.use("/api/v1/hospitals", hospitalRoutes);
+  app.use("/api/hospitals", hospitalRoutes);
+  app.use("/api/v1/stats", statsRoutes);
+  app.use("/api/v1/settings", settingsRoutes);
+  app.use("/api/v1/content", contentRoutes);
+  app.use("/api/v1/donations", donationRoutes);
+  app.use("/api/v1/seed", seedRoutes);
   app.use("/api/v1/ai", aiRoutes);
 
   app.use(notFoundHandler);

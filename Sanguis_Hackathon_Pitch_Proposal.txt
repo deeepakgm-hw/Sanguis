@@ -1,0 +1,101 @@
+===========================================================================
+SANGUIS — REAL-TIME SPATIAL BLOOD NETWORK & AI DISPATCH
+===========================================================================
+HACKATHON PITCH, APPROACH, PROPOSAL, & SYSTEM ARCHITECTURE
+===========================================================================
+
+Project Name: Sanguis
+Document Type: Hackathon Submission Pitch & Proposal
+Date: 2026-08-08
+
+---------------------------------------------------------------------------
+1. PROBLEM STATEMENT
+---------------------------------------------------------------------------
+In emergency healthcare, time is the single most critical factor. When patients require
+urgent blood transfusions (e.g., postpartum hemorrhages, trauma cases, surgeries),
+current blood network infrastructures suffer from severe systemic failures:
+
+1. Static Directories: Traditional databases list donor home addresses, not their 
+   current physical locations. A donor registered in Chennai might currently be in 
+   Bengaluru, leading to wasted contact attempts.
+2. Phantom Inventory: Blood bank websites list static inventory numbers that do not 
+   reflect real-time stock levels, causing desperate families to travel to banks 
+   experiencing shortages.
+3. Complex User Interfaces: Traditional search forms require users to fill out complex
+   filters, addresses, and parameters in high-stress emergency situations.
+4. Privacy & Spoofing Risks: Exposing real-time coordinates of active donors leaves 
+   them vulnerable to identity theft, tracking abuse, and spoofing of telemetry data.
+
+---------------------------------------------------------------------------
+2. OUR APPROACH
+---------------------------------------------------------------------------
+Sanguis shifts the paradigm from static lists to an active, secure, real-time spatial 
+blood response network. Our approach relies on four technical pillars:
+
+- High-Accuracy Telemetry: Harnessing browser Geolocation APIs to track donors only 
+  when they opt into location sharing.
+- Low-Latency Proximity Matching: Utilizing Redis GEO spatial indexing hash rings on 
+  the backend to match emergency requests with nearby donors within seconds.
+- 3D Interactive Visualization: Designing an interactive 3D perspective dispatch map 
+  (supporting pitch angles and bearing rotation) to give hospital coordinators 
+  immediate situational awareness.
+- Conversational AI Interface: Integrating Google Gemini AI to parse unstructured 
+  natural language requests (e.g., "I need 2 units of O+ urgently near Bengaluru"), 
+  automating form inputs without inventing fake inventory data.
+
+---------------------------------------------------------------------------
+3. THE PROPOSAL (VALUE PROPOSITION)
+---------------------------------------------------------------------------
+Sanguis is an emergency blood network and dispatch center. By combining real-time 
+geospatial indexing with AI natural language parsing, we eliminate dispatch friction 
+and coordinate life-saving blood supply routing instantly.
+
+KEY VALUE PROPOSITIONS:
+- Conversational Search: Users type a single natural sentence. Gemini extracts blood 
+  type, quantity, city, and urgency, and instantly triggers the database query.
+- Secure Telemetry: Telemetry updates are authenticated using JWT socket parameters 
+  (`socket.data.user.sub`), preventing donor identity spoofing.
+- Confirmed Availability: Each search result card dynamically checks units available 
+  against the requested quantity and lists verified stock status.
+- Direction Routing: Built-in integration with Google Maps API calculates transit directions 
+  using the donor's current coordinates.
+
+---------------------------------------------------------------------------
+4. TECHNICAL ARCHITECTURE
+---------------------------------------------------------------------------
+The Sanguis system is built on a clean, scalable multi-tier architecture:
+
+                          SANGUIS SYSTEM
+                                 │
+         ┌───────────────────────┼───────────────────────┐
+         ▼                       ▼                       ▼
+    CLIENT TIER             BACKEND TIER             DATA TIER
+   [Next.js Client]       [Express Server]         [MongoDB & Redis]
+         │                       │                       │
+         ├─ HTML5 Geolocation    ├─ REST Endpoints       ├─ MongoDB (Mongoose)
+         │  GPS watcher client   │  (Blood bank search)  │  (Verified banks)
+         │                       │                       │
+         ├─ Leaflet JS Map       ├─ Socket.IO Stream     ├─ Redis GEO Index
+         │  (3D pitch/bearing)   │  (Live coordinate)    │  (sanguis:locations)
+         │                       │                       │
+         └─ Zustand Store        └─ Gemini AI Parser     └─ MockRedis Cache
+            (Auth / Client API)     (gemini-1.5-flash)      (Local dev cache)
+
+EXECUTION FLOW:
+1. User prompt -> `/find-blood` page.
+2. POST `/api/v1/ai/parse-requirement` -> Backend extracts structured parameters.
+3. Gemini 1.5 Flash generates a structured JSON response (fallback to local rule parser if offline).
+4. GET `/api/v1/bloodbanks/search` -> Queries MongoDB using 2dsphere proximity ($near).
+5. Returns matching blood banks sorted by confirmed stock availability and distance.
+6. Display -> Interactive 3D Map + Result Cards + Google Maps routing directions.
+
+---------------------------------------------------------------------------
+5. HACKATHON ADVANTAGES & COMPLIANCE
+---------------------------------------------------------------------------
+- 100% Free & Open Source: No paid Google Maps API keys or third-party mapping SDK subscriptions.
+- Offline-Safe Fallback: Features a rule-based local parser that operates if API keys are missing.
+- Production-Ready: Full typescript check (`npx tsc --noEmit`) and Jest-equivalent unit tests verify all calculations before deployment.
+
+===========================================================================
+END OF HACKATHON PROPOSAL FILE
+===========================================================================
