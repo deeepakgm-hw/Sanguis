@@ -1,22 +1,14 @@
 import crypto from "crypto";
 import { logger } from "./logger";
+import { env } from "../config/env";
 
 // Standard AES-256-GCM settings
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12; // 12 bytes is the standard IV length for GCM
 
 // Generate or derive a 32-byte key
-const ENCRYPTION_KEY: Buffer = (() => {
-  const secret = process.env.DATABASE_ENCRYPTION_KEY || process.env.JWT_ACCESS_SECRET || "fallback_minimum_32_character_long_key_for_dev";
-  
-  // If the secret is already a 64-character hex string (32 bytes), load directly
-  if (secret.length === 64 && /^[0-9a-fA-F]+$/.test(secret)) {
-    return Buffer.from(secret, "hex");
-  }
-  
-  // Otherwise, derive a secure 32-byte key deterministically using scrypt
-  return crypto.scryptSync(secret, "hackathon-db-salt", 32);
-})();
+const ENCRYPTION_KEY: Buffer = Buffer.from(env.ENCRYPTION_KEY, "hex");
+
 
 /**
  * Encrypts cleartext using AES-256-GCM.

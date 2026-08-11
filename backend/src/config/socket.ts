@@ -155,3 +155,19 @@ export function initSocket(httpServer: HttpServer): Server {
 
   return io;
 }
+
+/**
+ * Emit an event to all donors in the specified list of user IDs.
+ * Utilizes the private room per user room-naming convention.
+ */
+export function emitToDonorsInRadius(
+  io: Server,
+  donorIds: string[],
+  event: string,
+  payload: any
+): void {
+  for (const donorId of donorIds) {
+    io.to(`user:${donorId}`).emit(event, payload);
+  }
+}
+

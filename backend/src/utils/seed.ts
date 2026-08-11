@@ -312,7 +312,7 @@ export async function seedDatabase(): Promise<void> {
 
     await DonationCertificate.create({
       certificateId: "SANGUIS-BDC-94820194",
-      verificationToken: "verification-token-placeholder",
+      verificationToken: "sanguis-mock-verification-token",
       user: sampleUser._id,
       donorName: sampleUser.name,
       verifiedDonation: vDonation._id,

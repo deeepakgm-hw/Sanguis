@@ -26,3 +26,53 @@ export async function createNotification(input: CreateNotificationInput) {
 
   return notification;
 }
+
+interface SendUrgentBroadcastNotificationInput {
+  app: Application;
+  donorIds: string[];
+  requestDetails: {
+    bloodRequestId: string;
+    bloodType: string;
+    urgencyLevel: string;
+    unitsNeeded: number;
+  };
+}
+
+/**
+ * Creates persistent in-app notifications in MongoDB for a group of matching
+ * nearby donors, and emits an "urgent:broadcast" event over their WebSocket connections.
+ */
+export async function sendUrgentBroadcastNotification(input: SendUrgentBroadcastNotificationInput) {
+  const { app, donorIds, requestDetails } = input;
+
+  const title = "URGENT: Blood Request Broadcast";
+  const message = `An urgent request for blood type ${requestDetails.bloodType} has been created nearby.`;
+  const link = `/requests/${requestDetails.bloodRequestId}`;
+
+  // Persist notifications to MongoDB so the notification history is preserved on next login
+  const notificationDocs = donorIds.map((userId) => ({
+    user: userId,
+    title,
+    message,
+    type: "error" as const,
+    link,
+  }));
+
+  let notifications: any[] = [];
+  if (notificationDocs.length) {
+    notifications = await Notification.insertMany(notificationDocs);
+  }
+
+  // Emit live socket event to all active matching users
+  const io = app.get("io");
+  if (io) {
+    const { emitToDonorsInRadius } = await import("../config/socket");
+    emitToDonorsInRadius(io, donorIds, "urgent:broadcast", {
+      requestDetails,
+      message,
+    });
+  }
+
+  return notifications;
+}
+
