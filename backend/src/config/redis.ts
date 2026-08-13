@@ -221,5 +221,18 @@ if (env.NODE_ENV === "production") {
 }
 
 export async function connectRedis(): Promise<void> {
+  if (env.NODE_ENV !== "production") {
+    await redis.connect();
+    return;
+  }
+
+  if (redis.status === "ready") {
+    return;
+  }
+
+  if (redis.status === "connecting" || redis.status === "reconnecting") {
+    return;
+  }
+
   await redis.connect();
 }
