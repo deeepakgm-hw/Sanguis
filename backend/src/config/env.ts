@@ -28,7 +28,7 @@ export const env = cleanEnv(process.env, {
   SMTP_PORT: num({ default: 587 }),
   SMTP_USER: str({ default: "" }),
   SMTP_PASS: str({ default: "" }),
-  SMTP_FROM: str({ default: "no-reply@app.com" }),
+  SMTP_FROM: str({ default: "" }),
 
   GOOGLE_CLIENT_ID: str({ default: "" }),
   GOOGLE_CLIENT_SECRET: str({ default: "" }),
