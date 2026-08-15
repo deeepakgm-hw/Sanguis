@@ -16,52 +16,78 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-let isRefreshing = false;
-let pendingQueue: Array<(token: string) => void> = [];
-
-/**
- * On a 401, silently hit /auth/refresh (which relies on the httpOnly
- * cookie) to get a new access token, retry the original request once,
- * and queue any other requests that failed concurrently instead of
- * firing N parallel refresh calls (which would race the token-rotation
- * "reuse detection" on the backend and log the user out).
- */
+// Prevent concurrent 401 responses from triggering multiple
+// refresh-token rotations. All requests share the same refresh
+// Promise until the new access token is received.
+let refreshPromise: Promise<string> | null = null;
+// Retry authenticated requests after silently refreshing the
+// access token. The refresh endpoint itself is never retried.
 api.interceptors.response.use(
-  (res) => res,
-  async (error: AxiosError) => {
-    const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
+  (response) => response,
 
-    if (error.response?.status !== 401 || originalRequest._retry || originalRequest.url?.includes("/auth/refresh")) {
+  async (error: AxiosError) => {
+    const originalRequest =
+      error.config as InternalAxiosRequestConfig & {
+        _retry?: boolean;
+      };
+
+    // Only handle 401 responses.
+    if (error.response?.status !== 401) {
       return Promise.reject(error);
     }
 
-    if (isRefreshing) {
-      return new Promise((resolve) => {
-        pendingQueue.push((token) => {
-          originalRequest.headers.Authorization = `Bearer ${token}`;
-          resolve(api(originalRequest));
-        });
-      });
+    // Never retry the refresh endpoint itself.
+    if (originalRequest.url?.includes("/auth/refresh")) {
+      useAuthStore.getState().clear();
+      return Promise.reject(new Error("SESSION_EXPIRED"));
+    }
+
+    // Don't retry the same request more than once.
+    if (originalRequest._retry) {
+      return Promise.reject(error);
     }
 
     originalRequest._retry = true;
-    isRefreshing = true;
 
     try {
-      const { data } = await api.post("/auth/refresh");
-      const newToken = data.data.accessToken as string;
-      useAuthStore.getState().setAccessToken(newToken);
+      // Reuse one refresh request if another refresh is already running.
+      if (!refreshPromise) {
+        refreshPromise = api
+          .post("/auth/refresh")
+          .then((response) => {
+            const newToken = response.data?.data?.accessToken;
 
-      pendingQueue.forEach((cb) => cb(newToken));
-      pendingQueue = [];
+            if (!newToken || typeof newToken !== "string") {
+              throw new Error(
+                "Refresh response did not contain accessToken"
+              );
+            }
 
+            useAuthStore.getState().setAccessToken(newToken);
+
+            return newToken;
+          })
+          .finally(() => {
+            refreshPromise = null;
+          });
+      }
+
+      const newToken = await refreshPromise;
+
+      // Retry the original request with the new access token.
       originalRequest.headers.Authorization = `Bearer ${newToken}`;
+
       return api(originalRequest);
     } catch (refreshError) {
+      refreshPromise = null;
       useAuthStore.getState().clear();
+
       return Promise.reject(new Error("SESSION_EXPIRED"));
-    } finally {
-      isRefreshing = false;
     }
   }
 );
+
+
+    
+  
+
